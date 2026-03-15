@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EdgeBet · FR_LAF_W · b152300</title>
+<title>EdgeBet · FR_LAF_W · b1528</title>
 <!-- build:20260315_1340 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -719,16 +719,36 @@ function renderAlertsTable(rows) {
   const tbody = filtered.map(function(row) {
     const dec      = String(v(row,"decision","alert","")).toUpperCase();
     const isStrong = dec.includes("STRONG");
-    const edgeNum  = safeNum(row, ["edge","edge_home_pp"]);
+    const edgeNum  = (function() {
+      // Try stored edge columns
+      const stored = safeNum(row, ["edge","edge_home_pp","edge_pp"]);
+      if (stored !== null) return stored;
+      // Calculate from model_prob - market_prob
+      const mp  = safeNum(row, ["model_prob","wp_home_live"]);
+      const mkp = safeNum(row, ["market_prob","market_prob_home"]);
+      if (mp !== null && mkp !== null) return Math.round((mp - mkp) * 10000) / 10000;
+      // Calculate from model_prob and market_odds
+      const mkt = safeNum(row, ["market_odds","market_home_odds"]);
+      if (mp !== null && mkt !== null && mkt > 1.0)
+        return Math.round((mp - 1/mkt) * 10000) / 10000;
+      return null;
+    })();
     const modelWP  = safeNum(row, ["model_prob","wp_home_live"]);
     const mktWP    = safeNum(row, ["market_prob","market_prob_home"]);
     const ev       = (function() {
+      // Try stored EV columns first
       for (const k of ["ev_home","ev","EV","expected_value","ev_pp"]) {
         const val = row[k];
         if (val !== null && val !== undefined && val !== "" && String(val) !== "None") {
           const n = parseFloat(String(val).replace("+","").replace(",","."));
           if (!isNaN(n)) return n;
         }
+      }
+      // Calculate EV from model_prob and market_odds if available
+      const mp  = safeNum(row, ["model_prob","wp_home_live"]);
+      const mkt = safeNum(row, ["market_odds","market_home_odds"]);
+      if (mp !== null && mkt !== null && mkt > 1.0) {
+        return Math.round((mp * mkt - 1) * 1000) / 1000;
       }
       return null;
     })();
