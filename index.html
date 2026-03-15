@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EdgeBet · FR_LAF_W · b1422</title>
+<title>EdgeBet · FR_LAF_W · b152300</title>
 <!-- build:20260315_1340 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -452,6 +452,7 @@ const SHEET_NAMES = {
   lineup:       "live_lineups",
   teams_master: "teams_master",
   players_raw:  "players_raw",
+  typical:      "typical_lineups",
 };
 
 // Cache danych
@@ -722,10 +723,10 @@ function renderAlertsTable(rows) {
     const modelWP  = safeNum(row, ["model_prob","wp_home_live"]);
     const mktWP    = safeNum(row, ["market_prob","market_prob_home"]);
     const ev       = (function() {
-      for (const k of ["ev_home","ev"]) {
+      for (const k of ["ev_home","ev","EV","expected_value","ev_pp"]) {
         const val = row[k];
         if (val !== null && val !== undefined && val !== "" && String(val) !== "None") {
-          const n = parseFloat(String(val).replace("+",""));
+          const n = parseFloat(String(val).replace("+","").replace(",","."));
           if (!isNaN(n)) return n;
         }
       }
