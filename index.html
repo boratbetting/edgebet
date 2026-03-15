@@ -1104,7 +1104,15 @@ async function openMatchStats(matchId, matchName, dtLabel, score) {
   overlay.classList.add("open");
 
   try {
-    const rows = await fetchSheet("players_raw", matchId);
+    // Fetch all players_raw rows (proxy can't reliably pass match_id param)
+    // then filter client-side by match_id
+    let rows = await fetchSheet("players_raw");
+    // Filter by match_id — compare as strings to handle numeric vs string mismatch
+    const mid = String(matchId).trim();
+    rows = rows.filter(r => {
+      const rowMid = String(v(r,"match_id","") || "").trim();
+      return rowMid === mid;
+    });
     renderMatchStats(matchId, matchName, rows);
   } catch(e) {
     document.getElementById("match-stats-content").innerHTML =
