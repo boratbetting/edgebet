@@ -494,23 +494,26 @@ window.addEventListener("load", () => {
 async function fetchSheet(sheetKey) {
   const name = SHEET_NAMES[sheetKey];
   if (!name) return [];
-  const url = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
-  try {
-    const resp = await fetch(url, { redirect: "follow" });
-    const text = await resp.text();
-    // Apps Script sometimes wraps in HTML on auth redirect
-    if (text.trim().startsWith("<")) {
-      throw new Error("Auth redirect — otwórz w trybie incognito lub innym profilu Chrome bez konta Google");
-    }
-    const json = JSON.parse(text);
-    if (json.error) throw new Error(json.error);
-    return json.data || [];
-  } catch(e) {
-    if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
-      throw new Error("Sieć niedostępna. Sprawdź połączenie internetowe.");
-    }
-    throw e;
+
+  const targetUrl = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
+
+  // Apps Script nie wysyła nagłówków CORS — używamy proxy
+  // corsproxy.io dodaje Access-Control-Allow-Origin: * do każdej odpowiedzi
+  const proxyUrl = `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`;
+
+  const resp = await fetch(proxyUrl);
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+
+  const text = await resp.text();
+
+  // Sprawdź czy nie dostaliśmy strony logowania Google
+  if (text.trim().startsWith("<")) {
+    throw new Error("Google wymaga logowania — sprawdź ustawienia wdrożenia Apps Script (Dostęp: Wszyscy)");
   }
+
+  const json = JSON.parse(text);
+  if (json.error) throw new Error(json.error);
+  return json.data || [];
 }
 
 async function loadTab(tab) {
