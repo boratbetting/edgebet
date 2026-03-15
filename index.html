@@ -450,10 +450,11 @@ const SHEET_NAMES = {
   players:      "player_rolling",
   lineup:       "live_lineups",
   teams_master: "teams_master",
+  players_raw:  "players_raw",
 };
 
 // Cache danych
-const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[], teams_master:[] };
+const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[], teams_master:[], players_raw:[] };
 let activeTab = "alerts";
 let userToken = "";
 
@@ -929,22 +930,29 @@ function renderMatches(rows) {
     ).join("");
   }
 
+  // Deduplicate by match_id (keep last occurrence = most complete data)
+  const seenIds = new Map();
+  rows.forEach(r => {
+    const mid = String(v(r,"match_id","") || "");
+    if (mid) seenIds.set(mid, r);
+  });
+  const deduped = [...seenIds.values()];
+
   // Filter
   let filtered;
   if (matchFilter === "upcoming") {
-    filtered = rows.filter(r => isUpcoming(r));
-    // Sort ascending by date
+    filtered = deduped.filter(r => isUpcoming(r));
     filtered = [...filtered].sort((a,b) => {
       const da = parseMatchDate(a), db = parseMatchDate(b);
       return (da||0) - (db||0);
     });
   } else if (matchFilter === "all") {
-    filtered = [...rows].sort((a,b) => {
+    filtered = [...deduped].sort((a,b) => {
       const da = parseMatchDate(a), db = parseMatchDate(b);
       return (db||0) - (da||0);
     });
   } else {
-    filtered = rows.filter(r => String(v(r,"players_imported","")).toUpperCase() === matchFilter);
+    filtered = deduped.filter(r => String(v(r,"players_imported","")).toUpperCase() === matchFilter);
   }
 
   setHtml("matches-count", filtered.length + " / " + rows.length + " meczów");
@@ -952,8 +960,11 @@ function renderMatches(rows) {
   const now = new Date();
 
   const html = filtered.map(row => {
-    const home   = v(row,"home_team","")  || "?";
-    const away   = v(row,"away_team","")  || "?";
+    const homeRaw = v(row,"home_team","")  || "?";
+    const awayRaw = v(row,"away_team","")  || "?";
+    const lookup  = buildTeamLookup();
+    const home    = TEAM_DISPLAY_NORMALIZE[homeRaw] || homeRaw;
+    const away    = TEAM_DISPLAY_NORMALIZE[awayRaw] || awayRaw;
     const hS     = v(row,"home_sets","")  || "";
     const aS     = v(row,"away_sets","")  || "";
     const venue  = v(row,"venue","")      || "";
@@ -993,7 +1004,8 @@ function renderMatches(rows) {
       : "";
 
     const mid = String(v(row,"match_id","") || "");
-    const clickable = !upcoming && imp === "YES";
+    // Only allow stats for past matches that have been imported
+  const clickable = !upcoming && imp === "YES" && (hS || aS);
 
     return `<div class="match-item" style="grid-template-columns:90px 1fr auto auto;${clickable?"cursor:pointer;":""}"
       ${clickable?`onclick="openMatchStats('${mid}','${home.replace(/'/g,"\'")} vs ${away.replace(/'/g,"\'")}','${dtLabel}','${hS}-${aS}')"`:""}>
@@ -1056,7 +1068,7 @@ async function openMatchStats(matchId, matchName, dtLabel, score) {
   overlay.classList.add("open");
 
   try {
-    const rows = await fetchSheet("players_raw_by_match", matchId);
+    const rows = await fetchSheet("players_raw", matchId);
     renderMatchStats(matchId, matchName, rows);
   } catch(e) {
     document.getElementById("match-stats-content").innerHTML =
@@ -1198,23 +1210,21 @@ const TEAM_NAME_FALLBACK = {
 };
 
 function buildTeamLookup() {
+  // Start with hardcoded fallback
   const map = Object.assign({}, TEAM_NAME_FALLBACK);
-  // Override from teams_master sheet if loaded (try all possible column names)
+
+  // Override from teams_master — column C = team_name_canonical is authoritative
   (DATA.teams_master || []).forEach(r => {
-    const tid  = String(v(r,"team_id","") || "");
-    const name = String(
-      v(r,"canonical_name","") ||
+    const tid      = String(v(r,"team_id","") || "");
+    // Try column C first (team_name_canonical), then other variants
+    const canonical = String(
       v(r,"team_name_canonical","") ||
-      v(r,"display_name","") ||
-      v(r,"team_name","") || ""
+      v(r,"canonical_name","")      ||
+      v(r,"display_name","")        || ""
     );
-    if (tid && name && !name.match(/^T_[0-9A-F]{6,}/i)) map[tid] = name;
-  });
-  // Supplement from player_rolling rows that have real team_name
-  (DATA.players || []).forEach(r => {
-    const tid  = String(v(r,"team_id","") || "");
-    const name = String(v(r,"team_name","") || "");
-    if (tid && name && !name.match(/^T_[0-9A-F]{6,}/i) && !map[tid]) map[tid] = name;
+    if (tid && canonical && !canonical.match(/^T_[0-9A-F]{6,}/i)) {
+      map[tid] = canonical;
+    }
   });
   return map;
 }
@@ -1252,9 +1262,12 @@ const TEAM_DISPLAY_NORMALIZE = {
 function getTeamName(row, lookup) {
   const tid = String(v(row,"team_id","") || "");
   const tn  = String(v(row,"team_name","") || "");
-  // 1. Lookup by team_id (most reliable — covers all hash variants)
-  if (tid && lookup[tid]) return lookup[tid];
-  // 2. Normalize raw team_name to canonical W-form
+  // 1. Lookup by team_id → always pass through DISPLAY_NORMALIZE to unify
+  if (tid && lookup[tid]) {
+    const n = lookup[tid];
+    return TEAM_DISPLAY_NORMALIZE[n] || n;
+  }
+  // 2. Use team_name if real — normalize it
   if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) {
     return TEAM_DISPLAY_NORMALIZE[tn] || tn;
   }
