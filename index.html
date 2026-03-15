@@ -492,11 +492,12 @@ window.addEventListener("load", () => {
 });
 
 // ─── FETCH ──────────────────────────────────────────────────
-async function fetchSheet(sheetKey) {
-  const name = SHEET_NAMES[sheetKey];
+async function fetchSheet(sheetKey, filterMatchId) {
+  const name = SHEET_NAMES[sheetKey] || sheetKey;
   if (!name) return [];
 
-  const targetUrl = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
+  let targetUrl = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
+  if (filterMatchId) targetUrl += `&match_id=${encodeURIComponent(filterMatchId)}`;
 
   // Apps Script nie wysyła nagłówków CORS.
   // Próbujemy kilka proxy po kolei — pierwsze które odpowie wygrywa.
@@ -970,7 +971,11 @@ function renderMatches(rows) {
       ? `<span style="font-family:var(--mono);font-size:14px;font-weight:500">${hS}–${aS}</span>`
       : "";
 
-    return `<div class="match-item" style="grid-template-columns:90px 1fr auto auto">
+    const mid = String(v(row,"match_id","") || "");
+    const clickable = !upcoming && imp === "YES";
+
+    return `<div class="match-item" style="grid-template-columns:90px 1fr auto auto;${clickable?"cursor:pointer;":""}"
+      ${clickable?`onclick="openMatchStats('${mid}','${home.replace(/'/g,"\'")} vs ${away.replace(/'/g,"\'")}','${dtLabel}','${hS}-${aS}')"`:""}>
       <div class="mi-time">
         <div style="font-family:var(--mono);font-size:12px;color:var(--t1)">${dtLabel}</div>
       </div>
@@ -982,6 +987,7 @@ function renderMatches(rows) {
       <div style="display:flex;align-items:center;gap:8px">
         ${scoreHtml}
         ${countdownHtml}
+        ${clickable?`<span style="font-size:10px;color:var(--t3)">→ statystyki</span>`:""}
       </div>
       <div>${statusHtml}</div>
     </div>`;
@@ -1009,6 +1015,104 @@ function setMatchFilter(val, btn) {
   document.querySelectorAll("#matches-filters .f-btn").forEach(b => b.classList.remove("act"));
   btn.classList.add("act");
   renderMatches(DATA.matches);
+}
+
+// ── Match stats drawer ────────────────────────────────────────
+async function openMatchStats(matchId, matchName, dtLabel, score) {
+  const overlay = document.getElementById("drawer-overlay");
+  const dc      = document.getElementById("drawer-content");
+
+  dc.innerHTML = `<div class="drawer-head">
+    <div>
+      <div style="font-size:15px;font-weight:500">${matchName}</div>
+      <div style="font-size:12px;color:var(--t2);margin-top:4px">${dtLabel} · Wynik: ${score||"—"}</div>
+    </div>
+    <span class="drawer-close" onclick="closeDrawer()">✕</span>
+  </div>
+  <div id="match-stats-content">
+    <div class="loading" style="height:120px"><div class="spinner"></div><span>Ładowanie statystyk...</span></div>
+  </div>`;
+  overlay.classList.add("open");
+
+  try {
+    const rows = await fetchSheet("players_raw_by_match", matchId);
+    renderMatchStats(matchId, matchName, rows);
+  } catch(e) {
+    document.getElementById("match-stats-content").innerHTML =
+      `<div class="error-box">Błąd: ${e.message}</div>`;
+  }
+}
+
+function renderMatchStats(matchId, matchName, rows) {
+  const el = document.getElementById("match-stats-content");
+  if (!el) return;
+  if (!rows || rows.length === 0) {
+    el.innerHTML = `<div class="empty">Brak statystyk dla tego meczu</div>`;
+    return;
+  }
+
+  // Group by team_side
+  const sides = {};
+  rows.forEach(r => {
+    const side = String(v(r,"team_side","side","") || v(r,"team_name","") || "?");
+    if (!sides[side]) sides[side] = { name: v(r,"team_name",side) || side, rows:[] };
+    sides[side].rows.push(r);
+  });
+
+  const sideHtml = Object.values(sides).map(team => {
+    const header = `<div style="font-size:12px;font-weight:500;color:var(--t1);margin:16px 0 8px;
+      padding-bottom:6px;border-bottom:1px solid var(--bd)">${team.name}</div>`;
+
+    const tableHead = `<div style="display:grid;grid-template-columns:2fr repeat(8,1fr);
+      gap:4px;font-size:9px;color:var(--t3);text-transform:uppercase;
+      letter-spacing:.05em;padding:4px 0;margin-bottom:2px">
+      <span>Zawodniczka</span>
+      <span style="text-align:center">Pkt</span>
+      <span style="text-align:center">Atk</span>
+      <span style="text-align:center">AtkErr</span>
+      <span style="text-align:center">Blk</span>
+      <span style="text-align:center">Ace</span>
+      <span style="text-align:center">SrvErr</span>
+      <span style="text-align:center">Rec+</span>
+      <span style="text-align:center">Rec%</span>
+    </div>`;
+
+    const playerRows = team.rows.map(r => {
+      const name    = String(v(r,"player_name","") || "?");
+      const libero  = String(v(r,"libero","") || "").toUpperCase() === "L";
+      const pts     = num(v(r,"total_pts",0));
+      const att     = num(v(r,"att_pts",0));
+      const attErr  = num(v(r,"att_err",0));
+      const blk     = num(v(r,"blocks",0));
+      const ace     = num(v(r,"srv_ace",0));
+      const srvErr  = num(v(r,"srv_err",0));
+      const recTot  = num(v(r,"rec_tot",0));
+      const recPos  = num(v(r,"rec_pos",0));
+      const recPct  = recTot > 0 ? Math.round(recPos/recTot*100) : 0;
+
+      const isTop   = pts >= 10;
+      return `<div style="display:grid;grid-template-columns:2fr repeat(8,1fr);
+        gap:4px;padding:6px 4px;border-bottom:1px solid var(--bd);
+        font-size:11px;align-items:center;
+        background:${isTop?"rgba(79,126,247,.04)":"transparent"}">
+        <span style="color:var(--t1);font-weight:${isTop?"500":"400"}">
+          ${name}${libero?' <span style="font-size:9px;color:var(--t3)">(L)</span>':''}
+        </span>
+        <span style="text-align:center;font-family:var(--mono);color:${pts>0?"var(--t1)":"var(--t3)"};font-weight:${isTop?"500":"400"}">${pts||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${att>0?"var(--grn)":"var(--t3)"}">${att||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${attErr>0?"var(--red)":"var(--t3)"}">${attErr||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${blk>0?"var(--acc)":"var(--t3)"}">${blk||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${ace>0?"var(--grn)":"var(--t3)"}">${ace||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${srvErr>0?"var(--red)":"var(--t3)"}">${srvErr||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:var(--t2)">${recPos||"—"}</span>
+        <span style="text-align:center;font-family:var(--mono);color:${recPct>=50?"var(--grn)":"var(--t2)"}">${recTot>0?recPct+"%":"—"}</span>
+      </div>`;
+    }).join("");
+
+    return header + tableHead + playerRows;
+  }).join("");
+
+  el.innerHTML = sideHtml;
 }
 
 // ─── PLAYER ROLLING ──────────────────────────────────────────
@@ -1094,13 +1198,45 @@ function buildTeamLookup() {
   return map;
 }
 
+// Short names → canonical display names (dedup across spelling variants)
+const TEAM_DISPLAY_NORMALIZE = {
+  "France Avenir":        "France Avenir W",
+  "France Avenir 2024":   "France Avenir W",
+  "Volero Le Cannet":     "Volero Le Cannet W",
+  "Le Cannet":            "Volero Le Cannet W",
+  "Vandoeuvre Nancy":     "Vandoeuvre Nancy W",
+  "Vandoeuvre-Nancy":     "Vandoeuvre Nancy W",
+  "Volley Mulhouse Alsace":"Volley Mulhouse Alsace W",
+  "Mulhouse":             "Volley Mulhouse Alsace W",
+  "Terville Florange":    "Terville-Florange W",
+  "Terville-Florange OC": "Terville-Florange W",
+  "Terville-Florange":    "Terville-Florange W",
+  "Beziers Volley":       "Beziers W",
+  "Levallois Paris SC":   "Levallois Paris W",
+  "Levallois Paris":      "Levallois Paris W",
+  "RC Cannes":            "RC Cannes W",
+  "Cannes":               "RC Cannes W",
+  "Evreux":               "Evreux W",
+  "VC Marcq-en-Baroeul":  "VC Marcq-en-Baroeul W",
+  "Marcq en Baroeul":     "VC Marcq-en-Baroeul W",
+  "VBC Chamalieres":      "VBC Chamalieres W",
+  "Chamalieres":          "VBC Chamalieres W",
+  "Saint-Die-des-Vosges VB":"Saint-Die W",
+  "Bordeaux Merignac Volley":"Bordeaux Merignac W",
+  "Bordeaux Merignac":    "Bordeaux Merignac W",
+  "Neptunes de Nantes":   "Neptunes de Nantes W",
+  "Pays d Aix Venelles":  "Pays d Aix Venelles W",
+};
+
 function getTeamName(row, lookup) {
   const tid = String(v(row,"team_id","") || "");
   const tn  = String(v(row,"team_name","") || "");
-  // Lookup by team_id first (most reliable)
+  // 1. Lookup by team_id (most reliable — covers all hash variants)
   if (tid && lookup[tid]) return lookup[tid];
-  // Use team_name if it looks real
-  if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) return tn;
+  // 2. Normalize raw team_name to canonical W-form
+  if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) {
+    return TEAM_DISPLAY_NORMALIZE[tn] || tn;
+  }
   return tid || "—";
 }
 
