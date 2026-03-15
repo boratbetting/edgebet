@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>EdgeBet · FR_LAF_W Intelligence</title>
+<!-- build:20260315_1340 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
 <style>
@@ -530,8 +531,9 @@ async function loadTab(tab) {
   if (!DATA[tab] || DATA[tab].length === 0) {
     await loadData(tab);
   }
-  // Always load teams_master alongside players for name resolution
-  if (tab === "players" && (!DATA.teams_master || DATA.teams_master.length === 0)) {
+  // Load teams_master for any tab that needs name resolution
+  if ((tab === "players" || tab === "matches" || tab === "pricing") &&
+      (!DATA.teams_master || DATA.teams_master.length === 0)) {
     await loadData("teams_master");
   }
   renderTab(tab);
@@ -962,9 +964,23 @@ function renderMatches(rows) {
   const html = filtered.map(row => {
     const homeRaw = v(row,"home_team","")  || "?";
     const awayRaw = v(row,"away_team","")  || "?";
-    const lookup  = buildTeamLookup();
-    const home    = TEAM_DISPLAY_NORMALIZE[homeRaw] || homeRaw;
-    const away    = TEAM_DISPLAY_NORMALIZE[awayRaw] || awayRaw;
+    const tmLookup = buildTeamLookup();
+    // resolveMatchTeamName: check teams_master canonical first, then normalize
+    function resolveMatchTeamName(raw) {
+      if (!raw || raw === "?") return raw;
+      // Check if teams_master has a canonical name for this raw name
+      const tmEntry = (DATA.teams_master || []).find(r => {
+        const src = String(v(r,"team_name_source","") || "");
+        return src.split("|").map(s=>s.trim()).includes(raw);
+      });
+      if (tmEntry) {
+        const canonical = String(v(tmEntry,"team_name_canonical","") || "");
+        if (canonical) return canonical;
+      }
+      return TEAM_DISPLAY_NORMALIZE[raw] || raw;
+    }
+    const home = resolveMatchTeamName(homeRaw);
+    const away = resolveMatchTeamName(awayRaw);
     const hS     = v(row,"home_sets","")  || "";
     const aS     = v(row,"away_sets","")  || "";
     const venue  = v(row,"venue","")      || "";
