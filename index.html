@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EdgeBet · FR_LAF_W Intelligence</title>
+<title>EdgeBet · FR_LAF_W · b1422</title>
 <!-- build:20260315_1340 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -985,20 +985,6 @@ function renderMatches(rows) {
     const homeRaw = v(row,"home_team","")  || "?";
     const awayRaw = v(row,"away_team","")  || "?";
     const tmLookup = buildTeamLookup();
-    // resolveMatchTeamName: check teams_master canonical first, then normalize
-    function resolveMatchTeamName(raw) {
-      if (!raw || raw === "?") return raw;
-      // Check if teams_master has a canonical name for this raw name
-      const tmEntry = (DATA.teams_master || []).find(r => {
-        const src = String(v(r,"team_name_source","") || "");
-        return src.split("|").map(s=>s.trim()).includes(raw);
-      });
-      if (tmEntry) {
-        const canonical = String(v(tmEntry,"team_name_canonical","") || "");
-        if (canonical) return canonical;
-      }
-      return TEAM_DISPLAY_NORMALIZE[raw] || raw;
-    }
     const home = resolveMatchTeamName(homeRaw);
     const away = resolveMatchTeamName(awayRaw);
     const hS     = v(row,"home_sets","")  || "";
@@ -1267,6 +1253,19 @@ const TEAM_NAME_FALLBACK = {
   "T_FA261CEF": "France Avenir W",
   "T_FE511BE1": "Beziers W"
 };
+
+function resolveMatchTeamName(raw) {
+  if (!raw || raw === "?") return raw;
+  const tmEntry = (DATA.teams_master || []).find(function(r) {
+    const src = String(v(r,"team_name_source","") || "");
+    return src.split("|").map(function(s){return s.trim();}).includes(raw);
+  });
+  if (tmEntry) {
+    const canonical = String(v(tmEntry,"team_name_canonical","") || "");
+    if (canonical) return TEAM_DISPLAY_NORMALIZE[canonical] || canonical;
+  }
+  return TEAM_DISPLAY_NORMALIZE[raw] || raw;
+}
 
 function buildTeamLookup() {
   // Start with hardcoded fallback
@@ -1586,4 +1585,19 @@ function renderLineupMatch(mid) {
       </span>
       <span style="font-family:var(--mono);font-size:13px;font-weight:500;color:var(--t1)">Mecz ${mid}</span>
       ${ko ? `<span style="font-family:var(--mono);font-size:12px;color:var(--grn)">KO ${ko}</span>` : ""}
-      <span style="font-size:12px;color:var(--t2)">${
+      <span style="font-size:12px;color:var(--t2)">${subtitle}</span>
+    </div>
+    <div style="display:flex;gap:12px;flex-wrap:wrap">${teams.map(buildTeamPanel).join("")}</div>
+  </div>`;
+
+  setHtml("lineup-content", html);
+}
+
+function showLineupMatch(mid, btn) {
+  document.querySelectorAll("#lineup-filters .f-btn").forEach(b => b.classList.remove("act"));
+  if (btn) btn.classList.add("act");
+  renderLineupMatch(mid);
+}
+</script>
+</body>
+</html>
