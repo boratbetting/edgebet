@@ -1113,6 +1113,21 @@ async function openMatchStats(matchId, matchName, dtLabel, score) {
       const rowMid = String(v(r,"match_id","") || "").trim();
       return rowMid === mid;
     });
+
+    // Deduplicate by player_name + set_no (scraper may have imported twice)
+    const seen = new Set();
+    rows = rows.filter(r => {
+      const key = [
+        v(r,"player_name",""),
+        v(r,"team_name","team_side",""),
+        v(r,"set_no",""),
+        v(r,"total_pts","att_pts","")
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     renderMatchStats(matchId, matchName, rows);
   } catch(e) {
     document.getElementById("match-stats-content").innerHTML =
@@ -1571,19 +1586,4 @@ function renderLineupMatch(mid) {
       </span>
       <span style="font-family:var(--mono);font-size:13px;font-weight:500;color:var(--t1)">Mecz ${mid}</span>
       ${ko ? `<span style="font-family:var(--mono);font-size:12px;color:var(--grn)">KO ${ko}</span>` : ""}
-      <span style="font-size:12px;color:var(--t2)">${subtitle}</span>
-    </div>
-    <div style="display:flex;gap:12px;flex-wrap:wrap">${teams.map(buildTeamPanel).join("")}</div>
-  </div>`;
-
-  setHtml("lineup-content", html);
-}
-
-function showLineupMatch(mid, btn) {
-  document.querySelectorAll("#lineup-filters .f-btn").forEach(b => b.classList.remove("act"));
-  if (btn) btn.classList.add("act");
-  renderLineupMatch(mid);
-}
-</script>
-</body>
-</html>
+      <span style="font-size:12px;color:var(--t2)">${
