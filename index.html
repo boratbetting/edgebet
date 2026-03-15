@@ -878,14 +878,36 @@ let playerTeamFilter = "all";
 let playerSortField = "pis_rolling";
 let playerSortDir   = "desc";
 
-// Team ID → name lookup built from teams_master or player_rolling data
+// Hardcoded fallback map — team_id → display name (FR_LAF_W)
+const TEAM_NAME_FALLBACK = {
+  "T_10F6443E": "Volero Le Cannet W",
+  "T_AF0458E5": "Vandoeuvre Nancy W",
+  "T_C2E1BAF6": "Volley Mulhouse Alsace W",
+  "T_7A8B6A2E": "Terville-Florange W",
+  "T_B5461916": "France Avenir W",
+  "T_C239C558": "Beziers W",
+  "T_760A407A": "Levallois Paris W",
+  "T_B3D6B895": "RC Cannes W",
+  "T_2CF7B030": "Evreux W",
+  "T_52B9E374": "VC Marcq-en-Baroeul W",
+  "T_448452C8": "Saint-Die W",
+  "T_97C5F67F": "VBC Chamalieres W",
+  "T_F0D580EC": "Bordeaux Merignac W",
+  "T_ED8EC9A4": "Terville-Florange OC",
+};
+
 function buildTeamLookup() {
-  const map = {};
-  // From teams_master if loaded
+  const map = Object.assign({}, TEAM_NAME_FALLBACK);
+  // Override from teams_master sheet if loaded (try all possible column names)
   (DATA.teams_master || []).forEach(r => {
     const tid  = String(v(r,"team_id","") || "");
-    const name = String(v(r,"canonical_name","team_name_canonical","team_name","") || "");
-    if (tid && name) map[tid] = name;
+    const name = String(
+      v(r,"canonical_name","") ||
+      v(r,"team_name_canonical","") ||
+      v(r,"display_name","") ||
+      v(r,"team_name","") || ""
+    );
+    if (tid && name && !name.match(/^T_[0-9A-F]{6,}/i)) map[tid] = name;
   });
   // Supplement from player_rolling rows that have real team_name
   (DATA.players || []).forEach(r => {
@@ -926,16 +948,21 @@ function renderPlayers(rows) {
     const teamBtns = [{val:"all",label:"Wszystkie"},...teamNames.map(t=>({val:t,label:t}))].map(o =>
       `<button class="f-btn${o.val===playerTeamFilter?" act":""}" onclick="setPlayerFilter('${o.val}',this)">${o.label}</button>`
     ).join("");
-    const sep = `<div class="f-sep"></div>`;
-    const sortBtns = [
-      {f:"pis_rolling",l:"Rolling"},
-      {f:"pis_last_3", l:"Last 3"},
-      {f:"pis_last_5", l:"Last 5"}
-    ].map(s => `<button class="f-btn${playerSortField===s.f?" act":""}" onclick="setPlayerSort('${s.f}',this)">${s.l}</button>`).join("");
-    const dirBtns = `
-      <button class="f-btn${playerSortDir==="desc"?" act":""}" onclick="setPlayerSortDir('desc',this)">↓ Najlepsi</button>
-      <button class="f-btn${playerSortDir==="asc"?" act":""}" onclick="setPlayerSortDir('asc',this)">↑ Najgorsi</button>`;
-    fBar.innerHTML = teamBtns + sep + sortBtns + sep + dirBtns;
+    const sortSection = `
+      <div style="display:flex;align-items:center;gap:6px;padding:4px 10px;
+        background:var(--s3);border-radius:6px;border:1px solid var(--bd);margin-left:4px">
+        <span style="font-size:10px;color:var(--t3);white-space:nowrap">Sortuj:</span>
+        ${[{f:"pis_rolling",l:"Rolling"},{f:"pis_last_3",l:"Last 3"},{f:"pis_last_5",l:"Last 5"}]
+          .map(s=>`<button class="f-btn${playerSortField===s.f?" act":""}" onclick="setPlayerSort('${s.f}',this)">${s.l}</button>`)
+          .join("")}
+        <div class="f-sep"></div>
+        <button class="f-btn${playerSortDir==="desc"?" act":""}" onclick="setPlayerSortDir('desc',this)">↓</button>
+        <button class="f-btn${playerSortDir==="asc"?" act":""}" onclick="setPlayerSortDir('asc',this)">↑</button>
+      </div>`;
+    fBar.innerHTML = `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">${teamBtns}</div>
+      ${sortSection}
+    </div>`;
   }
 
   // Filter
