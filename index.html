@@ -379,7 +379,7 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--san
             <tr>
               <th>Czas</th><th>Mecz</th><th>Strona</th>
               <th>Model WP</th><th>Market WP</th><th>Edge</th><th>EV</th>
-              <th>Alert</th><th>Conf.</th><th>Decyzja</th>
+              <th>Alert</th><th>Conf.</th><th>True odds</th>
             </tr>
           </thead>
           <tbody id="alerts-tbody"></tbody>
@@ -690,37 +690,53 @@ function setAlertFilter(val) {
 }
 
 function renderAlertsTable(rows) {
-  const filtered = alertFilter === "all" ? rows : rows.filter(r => String(v(r,"decision","alert","")).toUpperCase() === alertFilter);
+  const filtered = alertFilter === "all"
+    ? rows
+    : rows.filter(r => String(v(r,"decision","alert","")).toUpperCase() === alertFilter);
 
-  const tbody = filtered.map(row => {
-    const dec = String(v(row,"decision","alert","")).toUpperCase();
+  function safeNum(row, keys) {
+    for (const k of keys) {
+      const val = row[k];
+      if (val !== null && val !== undefined && val !== "" && String(val) !== "None") {
+        const n = parseFloat(String(val));
+        if (!isNaN(n)) return n;
+      }
+    }
+    return null;
+  }
+
+  const tbody = filtered.map(function(row) {
+    const dec      = String(v(row,"decision","alert","")).toUpperCase();
     const isStrong = dec.includes("STRONG");
-    const edge = num(v(row,"edge","edge_home_pp",0));
-    const ecls = edgeColor(edge);
-    const modelWP = num(v(row,"model_prob","wp_home_live","modelWP",0));
-    const mktWP   = num(v(row,"market_prob","market_prob_home","marketWP",0));
-    const ts = v(row,"timestamp","created_at","alert_id","") || "—";
-    const matchStr = [v(row,"home_team","match_id",""), v(row,"away_team","")].filter(Boolean).join(" vs ") || v(row,"match_id","—");
-    const side = v(row,"team_side_or_bet_side","side","") || "—";
-    const conf = v(row,"confidence","") || "—";
-    const rationale = v(row,"rationale","reason","") || "";
-    const ev = num(v(row,"ev_home","ev",0));
-
-    return `<tr class="${isStrong?'strong-row':''}" onclick='openAlertDrawer(${JSON.stringify(JSON.stringify(row))})'>
-      <td class="mono muted" style="font-size:11px">${String(ts).substring(0,16)}</td>
-      <td><div>${matchStr}</div>${rationale?`<div class="sub">${String(rationale).substring(0,80)}</div>`:""}</td>
+    const edgeNum  = safeNum(row, ["edge","edge_home_pp"]);
+    const modelWP  = safeNum(row, ["model_prob","wp_home_live"]);
+    const mktWP    = safeNum(row, ["market_prob","market_prob_home"]);
+    const ev       = safeNum(row, ["ev_home","ev"]);
+    const trueOdds = safeNum(row, ["true_odds","true_odds_home"]);
+    const ecls     = edgeNum !== null ? edgeColor(edgeNum) : "muted";
+    const ts       = String(v(row,"timestamp","") || "—").substring(0,16);
+    const home     = String(v(row,"home_team","") || "");
+    const away     = String(v(row,"away_team","") || "");
+    const matchStr = (home && away) ? (home + " vs " + away) : String(v(row,"match_id","—")||"—");
+    const side     = String(v(row,"team_side_or_bet_side","side","") || "—");
+    const conf     = String(v(row,"confidence","") || "—");
+    const rationale= String(v(row,"rationale","") || "");
+    const rowJson  = JSON.stringify(JSON.stringify(row));
+    return `<tr class="${isStrong?"strong-row":""}" onclick="openAlertDrawer(${rowJson})">
+      <td class="mono muted" style="font-size:11px">${ts}</td>
+      <td><div style="font-weight:500">${matchStr}</div>${rationale?`<div class="sub" style="font-size:10px;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${rationale}</div>`:""}</td>
       <td><span class="badge b-pre">${side}</span></td>
-      <td class="mono">${modelWP>0?pct(modelWP):"—"}</td>
-      <td class="mono muted">${mktWP>0?pct(mktWP):"—"}</td>
-      <td class="mono ${ecls}">${edge!==0?pp(edge):"—"}</td>
-      <td class="mono ${ev>0?'grn':'muted'}">${ev!==0?(ev>0?"+":"")+ev.toFixed(3):"—"}</td>
+      <td class="mono">${modelWP!==null?(modelWP*100).toFixed(1)+"%":"—"}</td>
+      <td class="mono muted">${mktWP!==null?(mktWP*100).toFixed(1)+"%":"—"}</td>
+      <td class="mono ${ecls}">${edgeNum!==null?(edgeNum>=0?"+":"")+(edgeNum*100).toFixed(1)+"pp":"—"}</td>
+      <td class="mono ${ev!==null&&ev>0?"grn":"muted"}">${ev!==null?(ev>0?"+":"")+ev.toFixed(3):"—"}</td>
       <td>${decisionBadge(dec)}</td>
       <td class="mono muted">${conf}</td>
-      <td>${decisionBadge(dec)}</td>
+      <td class="mono acc">${trueOdds!==null?trueOdds.toFixed(2):"—"}</td>
     </tr>`;
   }).join("");
 
-  setHtml("alerts-tbody", tbody || `<tr><td colspan="10"><div class="empty">Brak wyników dla tego filtra</div></td></tr>`);
+  setHtml("alerts-tbody", tbody || `<tr><td colspan="10"><div class="empty">Brak wyników</div></td></tr>`);
 }
 
 function openAlertDrawer(jsonStr) {
@@ -1239,7 +1255,7 @@ function buildTeamLookup() {
       v(r,"display_name","")        || ""
     );
     if (tid && canonical && !canonical.match(/^T_[0-9A-F]{6,}/i)) {
-      map[tid] = canonical;
+      map[tid] = TEAM_DISPLAY_NORMALIZE[canonical] || canonical;
     }
   });
   return map;
