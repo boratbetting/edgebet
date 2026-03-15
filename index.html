@@ -455,7 +455,7 @@ const SHEET_NAMES = {
 };
 
 // Cache danych
-const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[], teams_master:[], players_raw:[] };
+const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[], teams_master:[], players_raw:[], typical:[] };
 let activeTab = "alerts";
 let userToken = "";
 
@@ -539,6 +539,12 @@ async function loadTab(tab) {
   if ((tab === "players" || tab === "matches" || tab === "pricing") &&
       (!DATA.teams_master || DATA.teams_master.length === 0)) {
     await loadData("teams_master");
+  }
+  if (tab === "lineup" && (!DATA.typical || DATA.typical.length === 0)) {
+    await loadData("typical");
+  }
+  if (tab === "lineup" && (!DATA.players || DATA.players.length === 0)) {
+    await loadData("players");
   }
   renderTab(tab);
 }
@@ -715,7 +721,16 @@ function renderAlertsTable(rows) {
     const edgeNum  = safeNum(row, ["edge","edge_home_pp"]);
     const modelWP  = safeNum(row, ["model_prob","wp_home_live"]);
     const mktWP    = safeNum(row, ["market_prob","market_prob_home"]);
-    const ev       = safeNum(row, ["ev_home","ev"]);
+    const ev       = (function() {
+      for (const k of ["ev_home","ev"]) {
+        const val = row[k];
+        if (val !== null && val !== undefined && val !== "" && String(val) !== "None") {
+          const n = parseFloat(String(val).replace("+",""));
+          if (!isNaN(n)) return n;
+        }
+      }
+      return null;
+    })();
     const trueOdds = safeNum(row, ["true_odds","true_odds_home"]);
     const ecls     = edgeNum !== null ? edgeColor(edgeNum) : "muted";
     const ts       = String(v(row,"timestamp","") || "—").substring(0,16);
@@ -1507,17 +1522,316 @@ function renderLineup(rows) {
 
   const matchIds = Object.keys(matchGroups);
 
-  // Filter buttons
   const fBar = document.getElementById("lineup-filters");
   if (fBar) {
     fBar.innerHTML = matchIds.map((mid,i) =>
-      `<button class="f-btn${i===0?" act":""}" onclick="showLineupMatch('${mid}',this)">${"Mecz "+mid}</button>`
+      `<button class="f-btn${i===0?" act":""}" onclick="showLineupMatch('${mid}',this)">Mecz ${mid}</button>`
     ).join("");
   }
 
   window._lineupGroups = matchGroups;
   renderLineupMatch(matchIds[0]);
 }
+
+function buildTypicalMap() {
+  // Build map: team_id → { slot → { player_name, pis_rolling, slot_value, position } }
+  const map = {};
+  (DATA.players || []).forEach(r => {
+    // player_rolling doesn't have slot info — typical_lineups does but we don't cache it
+    // Use live lineup as reference for now
+  });
+  return map;
+}
+
+function renderLineupMatch(mid) {
+  const grp = (window._lineupGroups || {})[mid];
+  if (!grp) return;
+
+  const teams   = Object.values(grp.teams);
+  const ko      = getMatchKO(mid);
+  const matchInfo = getMatchTeams(mid);
+  const subtitle  = matchInfo
+    ? `${matchInfo.home} vs ${matchInfo.away}`
+    : teams.map(t => t.team_name).join(" vs ");
+
+  // ── Header ──────────────────────────────────────────────────
+  const header = `<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    margin-bottom:20px;padding:14px 18px;
+    background:var(--s2);border:1px solid var(--bd);border-radius:10px">
+    <span style="display:inline-flex;align-items:center;gap:5px;font-size:10px;
+      font-weight:600;color:var(--red);background:rgba(240,96,96,.12);
+      border:1px solid rgba(240,96,96,.3);padding:3px 10px;border-radius:4px;letter-spacing:.06em">
+      <span style="width:6px;height:6px;border-radius:50%;background:var(--red);
+        display:inline-block;animation:pulse 1.5s infinite"></span>
+      LIVE
+    </span>
+    <span style="font-family:var(--mono);font-size:13px;font-weight:500;color:var(--t1)">
+      Mecz ${mid}
+    </span>
+    ${ko ? `<span style="font-family:var(--mono);font-size:12px;color:var(--grn)">KO ${ko}</span>` : ""}
+    <span style="font-size:12px;color:var(--t2)">${subtitle}</span>
+  </div>`;
+
+  // ── Per-team panel ───────────────────────────────────────────
+  const ROLE_W = {S:1.25,OPP:1.20,OH:1.10,MB:1.00,L:0.90,UNKNOWN:0.85};
+
+  function calcTIS(teamRows) {
+    return teamRows.reduce((sum, r) => {
+      const pis = num(v(r,"pis_rolling",0));
+      const pos = String(v(r,"resolved_position","") || "UNKNOWN");
+      const rw  = ROLE_W[pos] || 0.85;
+      return sum + pis * rw;
+    }, 0);
+  }
+
+  // Try to enrich live rows with pis_rolling from player_rolling data
+  function enrichWithPIS(liveRow) {
+    const pid  = String(v(liveRow,"resolved_player_id","") || "");
+    const name = String(v(liveRow,"live_player_name_normalized","") || "");
+    let pis = 0, pisTyp = 0;
+
+    const pr = (DATA.players || []).find(r =>
+      String(v(r,"player_id","")) === pid ||
+      String(v(r,"player_name","")).toLowerCase() === name.toLowerCase()
+    );
+    if (pr) {
+      pis    = num(v(pr,"pis_rolling",0));
+      pisTyp = num(v(pr,"pis_season",0));
+    }
+    return { pis, pisTyp };
+  }
+
+  function teamPanel(team) {
+    const tname = team.team_name;
+
+    // Compute TIS_live
+    const enrichedRows = team.rows.map(r => {
+      const {pis, pisTyp} = enrichWithPIS(r);
+      const pos = String(v(r,"resolved_position","") || "UNKNOWN");
+      const rw  = ROLE_W[pos] || 0.85;
+      return { ...r, _pis: pis, _pisTyp: pisTyp, _pos: pos, _rw: rw, _contrib: +(pis * rw).toFixed(2) };
+    });
+
+    const tisLive = enrichedRows.reduce((s,r) => s + r._contrib, 0);
+
+    // Player rows
+    const playerRows = enrichedRows
+      .sort((a,b) => b._contrib - a._contrib)
+      .map(r => {
+        const name    = String(v(r,"live_player_name_normalized","live_player_name_raw","") || "—");
+        const num_r   = String(v(r,"player_no","") || "");
+        const slot    = String(v(r,"slot_name","") || "");
+        const pos     = r._pos;
+        const pis     = r._pis;
+        const contrib = r._contrib;
+        const rw      = r._rw;
+        const missing = String(v(r,"is_missing_from_typical","")).toLowerCase() === "true";
+        const conf    = String(v(r,"resolution_confidence","") || "");
+
+        const contribBar = contrib > 0
+          ? `<div style="height:3px;border-radius:2px;background:var(--acc);
+              width:${Math.min(100, contrib/0.35)}%;margin-top:3px;opacity:.6"></div>`
+          : "";
+
+        return `<div style="display:grid;grid-template-columns:30px 24px 90px 36px 52px 52px 52px;
+          align-items:center;gap:4px;padding:7px 10px;border-radius:6px;margin-bottom:2px;
+          background:${missing?"rgba(240,96,96,.06)":"var(--s3)"};
+          border:1px solid ${missing?"rgba(240,96,96,.25)":"transparent"}">
+          <span style="font-family:var(--mono);font-size:9px;color:var(--t3)">${slot}</span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3)">${num_r?"#"+num_r:""}</span>
+          <span style="font-size:11px;font-weight:500;color:${missing?"var(--red)":"var(--t1)"}">
+            ${name.length>16?name.substring(0,15)+"…":name}
+            ${conf==="low"?'<span style="color:var(--amb);font-size:9px">?</span>':""}
+          </span>
+          <span style="font-family:var(--mono);font-size:10px;text-align:center;
+            background:var(--s4);color:var(--acc);padding:1px 4px;border-radius:3px">${pos}</span>
+          <span style="font-family:var(--mono);font-size:11px;color:var(--t2);text-align:right">
+            ${pis>0?pis.toFixed(2):"—"}
+          </span>
+          <span style="font-family:var(--mono);font-size:10px;color:var(--t3);text-align:center">
+            ×${rw.toFixed(2)}
+          </span>
+          <span style="font-family:var(--mono);font-size:11px;font-weight:500;
+            color:${contrib>=0.25?"var(--grn)":contrib>0?"var(--t1)":"var(--t3)"};text-align:right">
+            ${contrib>0?contrib.toFixed(2):"—"}
+            ${contribBar}
+          </span>
+        </div>`;
+      }).join("");
+
+    // Check if we have typical lineup TIS from pricing data
+    let tisTyp = 0;
+    const lookup = buildTeamLookup();
+    const resolvedName = getTeamName({team_id: team.team_id, team_name: team.team_name}, lookup);
+    const pricingRow = (DATA.pricing || []).find(r => {
+      const hn = lookup[String(v(r,"home_team_id",""))] || "";
+      const an = lookup[String(v(r,"away_team_id",""))] || "";
+      return hn.includes(resolvedName.split(" ")[0]) || an.includes(resolvedName.split(" ")[0]);
+    });
+    if (pricingRow) {
+      const isHome = (lookup[String(v(pricingRow,"home_team_id",""))] || "")
+        .includes(resolvedName.split(" ")[0]);
+      tisTyp = num(v(pricingRow, isHome?"tis_typical_home":"tis_typical_away", 0));
+    }
+
+    const shockPct = tisTyp > 0 ? ((tisLive - tisTyp) / tisTyp * 100) : null;
+    const shockColor = shockPct === null ? "var(--t3)"
+      : shockPct >= 0 ? "var(--grn)"
+      : shockPct >= -8 ? "var(--amb)"
+      : "var(--red)";
+
+    return `<div class="panel" style="flex:1;min-width:300px">
+      <!-- Team header -->
+      <div style="display:flex;align-items:center;justify-content:space-between;
+        margin-bottom:14px;padding-bottom:10px;border-bottom:1px solid var(--bd)">
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--t1)">${tname}</div>
+          <div style="font-size:10px;color:var(--t3);margin-top:2px">
+            Set 1 · ${enrichedRows.length} zawodniczek
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:11px;color:var(--t3)">TIS live</div>
+          <div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--acc)">
+            ${tisLive.toFixed(1)}
+          </div>
+          ${tisTyp > 0 ? `
+          <div style="font-size:10px;color:var(--t3)">
+            vs typowy
+            <span style="font-family:var(--mono);color:var(--t2)">${tisTyp.toFixed(1)}</span>
+          </div>
+          <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:${shockColor}">
+            ${shockPct !== null ? (shockPct>=0?"+":"")+shockPct.toFixed(1)+"%" : ""}
+          </div>` : ""}
+        </div>
+      </div>
+
+      <!-- Column headers -->
+      <div style="display:grid;grid-template-columns:30px 24px 90px 36px 52px 52px 52px;
+        gap:4px;padding:2px 10px 6px;font-size:9px;color:var(--t3);
+        text-transform:uppercase;letter-spacing:.04em">
+        <span>Slot</span>
+        <span>Nr</span>
+        <span>Zawodniczka</span>
+        <span>Poz</span>
+        <span style="text-align:right">PIS</span>
+        <span style="text-align:center">×RW</span>
+        <span style="text-align:right">Kontr.</span>
+      </div>
+
+      ${playerRows}
+
+      <!-- TIS total bar -->
+      <div style="margin-top:10px;padding:8px 10px;background:var(--s2);
+        border-radius:6px;border:1px solid var(--bd)">
+        <div style="display:flex;justify-content:space-between;align-items:center;
+          margin-bottom:6px">
+          <span style="font-size:10px;color:var(--t3)">TIS live total</span>
+          <span style="font-family:var(--mono);font-size:13px;font-weight:700;
+            color:var(--acc)">${tisLive.toFixed(2)}</span>
+        </div>
+        <div style="height:4px;background:var(--s4);border-radius:2px;overflow:hidden">
+          <div style="height:100%;background:var(--acc);border-radius:2px;
+            width:${Math.min(100,tisLive/1.2)}%;transition:width .4s ease"></div>
+        </div>
+      </div>
+
+      <!-- Missing players vs typical lineup -->
+      ${(function() {
+        // Find typical lineup for this team in DATA.typical
+        const tid = team.team_id;
+        const typRows = (DATA.typical || []).filter(r => {
+          const rtid = String(v(r,"team_id","") || "");
+          const rname = String(v(r,"team_name","") || "");
+          return rtid === tid ||
+            rname.toLowerCase().includes(tname.split(" ")[0].toLowerCase()) ||
+            tname.toLowerCase().includes(rname.split(" ")[0].toLowerCase());
+        });
+
+        if (typRows.length === 0) return "";
+
+        // Live player IDs and names
+        const liveIds   = new Set(enrichedRows.map(r => String(v(r,"resolved_player_id",""))));
+        const liveNames = new Set(enrichedRows.map(r =>
+          String(v(r,"live_player_name_normalized","") || "").toLowerCase()
+        ));
+
+        // Find missing: in typical but not in live
+        const missing = typRows.filter(r => {
+          const pid   = String(v(r,"player_id","") || "");
+          const pname = String(v(r,"player_name","") || "").toLowerCase();
+          return !liveIds.has(pid) && !liveNames.has(pname) && pid !== "";
+        });
+
+        if (missing.length === 0) return `
+          <div style="margin-top:8px;padding:8px 10px;background:rgba(45,212,160,.06);
+            border:1px solid rgba(45,212,160,.2);border-radius:6px">
+            <span style="font-size:10px;color:var(--grn)">✓ Skład kompletny — wszyscy typowi zawodnicy obecni</span>
+          </div>`;
+
+        const totalLoss = missing.reduce((s, r) => s + num(v(r,"slot_value",0)), 0);
+        const missingHtml = missing.map(r => {
+          const pname    = String(v(r,"player_name","") || "—");
+          const slot     = String(v(r,"slot_name","") || "");
+          const pos      = String(v(r,"position","") || "?");
+          const slotVal  = num(v(r,"slot_value",0));
+          const pisRoll  = num(v(r,"pis_rolling",0));
+          const ROLE_W2  = {S:1.25,OPP:1.20,OH:1.10,MB:1.00,L:0.90,UNKNOWN:0.85};
+          const rw       = ROLE_W2[pos] || 0.85;
+
+          return `<div style="display:flex;align-items:center;gap:8px;padding:6px 8px;
+            background:rgba(240,96,96,.06);border-radius:5px;margin-bottom:3px;
+            border-left:3px solid var(--red)">
+            <span style="font-family:var(--mono);font-size:9px;color:var(--t3);width:28px">${slot}</span>
+            <span style="font-size:11px;font-weight:500;color:var(--red);flex:1">${pname}</span>
+            <span style="font-family:var(--mono);font-size:10px;background:var(--s4);
+              color:var(--acc);padding:1px 4px;border-radius:3px">${pos}</span>
+            <div style="text-align:right">
+              <div style="font-family:var(--mono);font-size:10px;color:var(--t3)">
+                PIS ${pisRoll>0?pisRoll.toFixed(2):"—"} ×${rw.toFixed(2)}
+              </div>
+              <div style="font-family:var(--mono);font-size:11px;font-weight:600;color:var(--red)">
+                −${slotVal>0?slotVal.toFixed(2):pisRoll>0?(pisRoll*rw).toFixed(2):"?"}
+              </div>
+            </div>
+          </div>`;
+        }).join("");
+
+        return `<div style="margin-top:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;
+            margin-bottom:8px">
+            <span style="font-size:11px;font-weight:600;color:var(--red)">
+              ⚠ Brakujące zawodniczki (${missing.length})
+            </span>
+            <span style="font-family:var(--mono);font-size:12px;font-weight:700;
+              color:var(--red)">−${totalLoss.toFixed(2)} TIS</span>
+          </div>
+          ${missingHtml}
+          <div style="margin-top:6px;padding:6px 10px;background:rgba(240,96,96,.08);
+            border-radius:5px;display:flex;justify-content:space-between">
+            <span style="font-size:10px;color:var(--t3)">
+              TIS typowy ${tisTyp>0?tisTyp.toFixed(2):"?"} →
+              TIS live ${tisLive.toFixed(2)}
+            </span>
+            <span style="font-family:var(--mono);font-size:11px;font-weight:600;
+              color:${tisLive>=tisTyp?"var(--grn)":"var(--red)"}">
+              ${tisTyp>0?(tisLive-tisTyp>=0?"+":"")+(tisLive-tisTyp).toFixed(2)+" ("+
+                ((tisLive-tisTyp)/tisTyp*100).toFixed(1)+"%)":""}
+            </span>
+          </div>
+        </div>`;
+      })()}
+    </div>`;
+  }
+
+  const teamPanels = teams.map(t => teamPanel(t)).join("");
+
+  setHtml("lineup-content",
+    header +
+    `<div style="display:flex;gap:16px;flex-wrap:wrap">${teamPanels}</div>`
+  );
+}
+
 
 function getMatchKO(mid) {
   if (!DATA.matches || !DATA.matches.length) return null;
