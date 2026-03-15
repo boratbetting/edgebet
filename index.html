@@ -794,7 +794,13 @@ function renderPricing(rows) {
     const dec = String(v(row,"decision_home","decision","")).toUpperCase();
     const shock = num(v(row,"lineup_shock_home","lineup_shock",0));
     const edge  = num(v(row,"edge_home_pp","edge",0));
-    const matchStr = [v(row,"home_team_id",""), v(row,"away_team_id","")].filter(Boolean).join(" vs ") || v(row,"match_id","—");
+    // Resolve team names from IDs
+    const lookup = buildTeamLookup ? buildTeamLookup() : {};
+    const homeId = String(v(row,"home_team_id","") || "");
+    const awayId = String(v(row,"away_team_id","") || "");
+    const homeName = lookup[homeId] || TEAM_NAME_FALLBACK[homeId] || homeId || "?";
+    const awayName = lookup[awayId] || TEAM_NAME_FALLBACK[awayId] || awayId || "?";
+    const matchStr = homeName && awayName ? `${homeName} vs ${awayName}` : v(row,"match_id","—");
     const wpLive = num(v(row,"wp_home_live","model_prob",0));
     const trueOdds = num(v(row,"true_odds_home","true_odds",0));
     const mktOdds  = num(v(row,"market_home_odds","market_odds",0));
@@ -804,16 +810,31 @@ function renderPricing(rows) {
     else if (dec.includes("VALUE")||dec.includes("BET")) alertCls = "alert-value";
     else if (dec==="WATCH") alertCls = "alert-watch";
 
+    const tisTypH = num(v(row,"tis_typical_home",0));
+    const tisTypA = num(v(row,"tis_typical_away",0));
+    const tisLivH = num(v(row,"tis_live_home",0));
+    const tisLivA = num(v(row,"tis_live_away",0));
+    const hasTIS  = tisTypH > 0 || tisTypA > 0;
+    const hasShock = shock !== 0;
+    const hasLive  = tisLivH > 0 || tisLivA > 0;
+
+    const tisInfo = hasTIS ? `
+      <div style="font-size:10px;color:var(--t3);margin-top:4px;display:flex;gap:10px">
+        <span>TIS home: <span style="color:var(--t2)">${tisTypH.toFixed(1)}${hasLive&&tisLivH?` → <span style="color:${tisLivH>=tisTypH?"var(--grn)":"var(--red)"}">${tisLivH.toFixed(1)}</span>`:"(no live)"}</span></span>
+        <span>TIS away: <span style="color:var(--t2)">${tisTypA.toFixed(1)}${hasLive&&tisLivA?` → <span style="color:${tisLivA>=tisTypA?"var(--grn)":"var(--red)"}">${tisLivA.toFixed(1)}</span>`:"(no live)"}</span></span>
+      </div>` : "";
+
     return `<div class="pricing-row ${alertCls}">
       <div>
         <div class="pr-teams">${matchStr}</div>
-        <div class="pr-sub">${v(row,"match_id","") || ""}</div>
+        <div style="font-size:11px;color:var(--t3);margin-top:2px">Mecz ${v(row,"match_id","") || ""}</div>
+        ${tisInfo}
       </div>
-      <div class="pr-metric"><label>Model WP</label><span class="${wpLive>0.5?'grn':'muted'}">${wpLive>0?pct(wpLive):"—"}</span></div>
+      <div class="pr-metric"><label>Model WP (home)</label><span class="${wpLive>0.5?"grn":"muted"}">${wpLive>0?pct(wpLive):"—"}</span></div>
       <div class="pr-metric"><label>True odds</label><span>${trueOdds>0?odds(trueOdds):"—"}</span></div>
-      <div class="pr-metric"><label>Mkt odds</label><span class="muted">${mktOdds>0?odds(mktOdds):"—"}</span></div>
+      <div class="pr-metric"><label>Mkt odds</label><span class="muted">${mktOdds>0?odds(mktOdds):"—"}<br><span style="font-size:9px;color:var(--t3)">wpisz ręcznie</span></span></div>
       <div class="pr-metric"><label>Edge</label><span class="${edgeColor(edge)}">${edge!==0?pp(edge):"—"}</span></div>
-      <div class="pr-metric"><label>Shock</label><span class="${shockCls}">${shock!==0?(shock*100).toFixed(1)+"%":"—"}</span></div>
+      <div class="pr-metric"><label>Lineup shock</label><span class="${shockCls}">${hasShock?(shock*100).toFixed(1)+"%":"brak live"}</span></div>
       <div>${decisionBadge(dec)}</div>
     </div>`;
   }).join("");
