@@ -880,20 +880,56 @@ let playerSortDir   = "desc";
 
 // Hardcoded fallback map — team_id → display name (FR_LAF_W)
 const TEAM_NAME_FALLBACK = {
+  "T_000A8F2D": "RC Cannes W",
   "T_10F6443E": "Volero Le Cannet W",
-  "T_AF0458E5": "Vandoeuvre Nancy W",
-  "T_C2E1BAF6": "Volley Mulhouse Alsace W",
-  "T_7A8B6A2E": "Terville-Florange W",
-  "T_B5461916": "France Avenir W",
-  "T_C239C558": "Beziers W",
-  "T_760A407A": "Levallois Paris W",
-  "T_B3D6B895": "RC Cannes W",
-  "T_2CF7B030": "Evreux W",
-  "T_52B9E374": "VC Marcq-en-Baroeul W",
+  "T_17DB9AF2": "Vandoeuvre Nancy W",
+  "T_1B61891D": "Saint-Die W",
+  "T_1BCCE2E1": "France Avenir W",
+  "T_1DF6D6E8": "Terville-Florange W",
+  "T_26F8D1BA": "RC Cannes W",
+  "T_2ABCCC91": "VC Marcq-en-Baroeul W",
+  "T_3573710B": "Volero Le Cannet W",
+  "T_3A39AE4D": "VBC Chamalieres W",
+  "T_3E95ADAF": "Volley Mulhouse Alsace W",
+  "T_42D6AC8D": "VBC Chamalieres W",
+  "T_4478BD8E": "Saint-Die W",
   "T_448452C8": "Saint-Die W",
+  "T_46ED19C8": "Vandoeuvre Nancy W",
+  "T_48256D45": "Pays d Aix Venelles W",
+  "T_4D37EA0A": "VC Marcq-en-Baroeul W",
+  "T_52B9E374": "VC Marcq-en-Baroeul W",
+  "T_563494AD": "Evreux W",
+  "T_5715F6F5": "Bordeaux Merignac W",
+  "T_5E826293": "Terville-Florange W",
+  "T_62BA359F": "Neptunes de Nantes W",
+  "T_63CCD91D": "Pays d Aix Venelles W",
+  "T_680FC345": "Vandoeuvre Nancy W",
+  "T_6DCEC49F": "Pays d Aix Venelles W",
+  "T_74256729": "Neptunes de Nantes W",
+  "T_760A407A": "Levallois Paris W",
+  "T_7702338A": "Beziers W",
+  "T_7A8B6A2E": "Terville-Florange W",
+  "T_9349D15E": "Levallois Paris W",
   "T_97C5F67F": "VBC Chamalieres W",
+  "T_984A5CA5": "VC Marcq-en-Baroeul W",
+  "T_A6DE60EE": "Bordeaux Merignac W",
+  "T_AC85909C": "RC Cannes W",
+  "T_B3D6B895": "RC Cannes W",
+  "T_B4D7CFFE": "Levallois Paris W",
+  "T_B5461916": "France Avenir W",
+  "T_BAC26741": "VC Marcq-en-Baroeul W",
+  "T_C08D4FD7": "Evreux W",
+  "T_C239C558": "Beziers W",
+  "T_C2E1BAF6": "Volley Mulhouse Alsace W",
+  "T_CAE3526E": "Saint-Die W",
+  "T_D1A550BA": "Volero Le Cannet W",
+  "T_DF7569AD": "Saint-Die W",
+  "T_E2C3736B": "Volley Mulhouse Alsace W",
+  "T_EAE85F9B": "Neptunes de Nantes W",
+  "T_ED8EC9A4": "Terville-Florange W",
   "T_F0D580EC": "Bordeaux Merignac W",
-  "T_ED8EC9A4": "Terville-Florange OC",
+  "T_FA261CEF": "France Avenir W",
+  "T_FE511BE1": "Beziers W"
 };
 
 function buildTeamLookup() {
@@ -919,12 +955,12 @@ function buildTeamLookup() {
 }
 
 function getTeamName(row, lookup) {
+  const tid = String(v(row,"team_id","") || "");
   const tn  = String(v(row,"team_name","") || "");
-  const tid = String(v(row,"team_id","")   || "");
-  // If team_name looks real — use it
-  if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) return tn;
-  // Lookup by team_id
+  // Lookup by team_id first (most reliable)
   if (tid && lookup[tid]) return lookup[tid];
+  // Use team_name if it looks real
+  if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) return tn;
   return tid || "—";
 }
 
