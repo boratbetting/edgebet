@@ -499,15 +499,19 @@ async function fetchSheet(sheetKey, filterMatchId) {
   if (!name) return [];
 
   let targetUrl = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
-  if (filterMatchId) targetUrl += `&match_id=${encodeURIComponent(filterMatchId)}`;
+  if (filterMatchId) targetUrl += `&match_id=${encodeURIComponent(String(filterMatchId))}`;
 
-  // Apps Script nie wysyła nagłówków CORS.
-  // Próbujemy kilka proxy po kolei — pierwsze które odpowie wygrywa.
+  // WAŻNE: proxy musi otrzymać cały URL z parametrami jako jeden enkodowany string.
+  // Niektóre proxy (allorigins) gubią parametry po & — dlatego enkodujemy CAŁY targetUrl.
+  // Testujemy kolejno aż jeden proxy odpowie poprawnie.
   const proxies = [
     `https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`,
-    `https://corsproxy.io/?${encodeURIComponent(targetUrl)}`,
+    `https://corsproxy.io/?url=${encodeURIComponent(targetUrl)}`,
     `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`,
   ];
+
+  // Debug (tylko dla filtrowanych zapytań)
+  if (filterMatchId) console.log("[fetchSheet] URL:", targetUrl);
 
   let lastErr = null;
   for (const proxyUrl of proxies) {
