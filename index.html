@@ -491,31 +491,26 @@ window.addEventListener("load", () => {
 });
 
 // ─── FETCH ──────────────────────────────────────────────────
-function fetchSheet(sheetKey) {
-  return new Promise((resolve, reject) => {
-    const name = SHEET_NAMES[sheetKey];
-    if (!name) return resolve([]);
-
-    const cbName = "eb_cb_" + sheetKey + "_" + Date.now();
-    const url = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}&callback=${cbName}`;
-
-    window[cbName] = function(json) {
-      delete window[cbName];
-      document.getElementById("script-" + sheetKey)?.remove();
-      if (json.error) return reject(new Error(json.error));
-      resolve(json.data || []);
-    };
-
-    const script = document.createElement("script");
-    script.id = "script-" + sheetKey;
-    script.src = url;
-    script.onerror = function() {
-      delete window[cbName];
-      script.remove();
-      reject(new Error("Network error — sprawdź połączenie"));
-    };
-    document.head.appendChild(script);
-  });
+async function fetchSheet(sheetKey) {
+  const name = SHEET_NAMES[sheetKey];
+  if (!name) return [];
+  const url = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
+  try {
+    const resp = await fetch(url, { redirect: "follow" });
+    const text = await resp.text();
+    // Apps Script sometimes wraps in HTML on auth redirect
+    if (text.trim().startsWith("<")) {
+      throw new Error("Auth redirect — otwórz w trybie incognito lub innym profilu Chrome bez konta Google");
+    }
+    const json = JSON.parse(text);
+    if (json.error) throw new Error(json.error);
+    return json.data || [];
+  } catch(e) {
+    if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
+      throw new Error("Sieć niedostępna. Sprawdź połączenie internetowe.");
+    }
+    throw e;
+  }
 }
 
 async function loadTab(tab) {
