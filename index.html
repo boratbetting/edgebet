@@ -414,7 +414,7 @@ html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--san
         <div class="filter-bar" id="players-filters"></div>
         <span class="muted" style="font-size:11px" id="players-count"></span>
       </div>
-      <div id="players-grid" class="player-grid"></div>
+      <div id="players-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px"></div>
       <div id="players-loading" class="loading"><div class="spinner"></div><span>Ładowanie zawodniczek...</span></div>
     </div>
 
@@ -444,15 +444,16 @@ const VALID_TOKEN = "edgebet2025poc";
 
 // Mapowanie zakładek Sheets → nazwy w API
 const SHEET_NAMES = {
-  alerts:  "alerts_log",
-  pricing: "team_pricing",
-  matches: "matches",
-  players: "player_rolling",
-  lineup:  "live_lineups",
+  alerts:       "alerts_log",
+  pricing:      "team_pricing",
+  matches:      "matches",
+  players:      "player_rolling",
+  lineup:       "live_lineups",
+  teams_master: "teams_master",
 };
 
 // Cache danych
-const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[] };
+const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[], teams_master:[] };
 let activeTab = "alerts";
 let userToken = "";
 
@@ -526,6 +527,10 @@ async function fetchSheet(sheetKey) {
 async function loadTab(tab) {
   if (!DATA[tab] || DATA[tab].length === 0) {
     await loadData(tab);
+  }
+  // Always load teams_master alongside players for name resolution
+  if (tab === "players" && (!DATA.teams_master || DATA.teams_master.length === 0)) {
+    await loadData("teams_master");
   }
   renderTab(tab);
 }
@@ -870,69 +875,35 @@ function setMatchFilter(val, btn) {
 let playerTeamFilter = "all";
 
 // ── Player Rolling state ─────────────────────────────────────
-let playerSortField  = "pis_rolling";  // pis_rolling | pis_last_3 | pis_last_5
-let playerSortDir    = "desc";         // desc | asc
+let playerSortField = "pis_rolling";
+let playerSortDir   = "desc";
 
-function resolveTeamName(row) {
-  // Use team_name if it looks like a real name (not a hash T_XXXXXXXX)
-  const tn = String(v(row,"team_name","") || "");
-  if (tn && !tn.match(/^T_[0-9A-F]{8}$/i)) return tn;
-  // Fallback: lookup from players data by team_id
-  const tid = String(v(row,"team_id","") || "");
-  if (!tid) return "—";
-  // Try to find another row with same team_id that has a real name
-  const found = (DATA.players || []).find(r => {
-    const t = String(v(r,"team_name","") || "");
-    return String(v(r,"team_id","")) === tid && t && !t.match(/^T_[0-9A-F]{8}$/i);
+// Team ID → name lookup built from teams_master or player_rolling data
+function buildTeamLookup() {
+  const map = {};
+  // From teams_master if loaded
+  (DATA.teams_master || []).forEach(r => {
+    const tid  = String(v(r,"team_id","") || "");
+    const name = String(v(r,"canonical_name","team_name_canonical","team_name","") || "");
+    if (tid && name) map[tid] = name;
   });
-  return found ? String(v(found,"team_name","")) : tid;
+  // Supplement from player_rolling rows that have real team_name
+  (DATA.players || []).forEach(r => {
+    const tid  = String(v(r,"team_id","") || "");
+    const name = String(v(r,"team_name","") || "");
+    if (tid && name && !name.match(/^T_[0-9A-F]{6,}/i) && !map[tid]) map[tid] = name;
+  });
+  return map;
 }
 
-function buildPlayerCard(row, maxPis, highlight) {
-  const name  = v(row,"player_name","normalized_player_name","") || "—";
-  const team  = resolveTeamName(row);
-  const pos   = v(row,"position","") || "?";
-  const pis   = num(v(row,"pis_rolling",0));
-  const pisL3 = num(v(row,"pis_last_3",0));
-  const pisL5 = num(v(row,"pis_last_5",0));
-  const pisS  = num(v(row,"pis_season",0));
-  const pct   = maxPis > 0 ? Math.round(pis/maxPis*100) : 0;
-  const trend = pisL3 > pisS ? "grn" : pisL3 < pisS*0.9 ? "red" : "muted";
-
-  const hlStyle = highlight === "best"
-    ? "border-color:rgba(45,212,160,.35);background:rgba(45,212,160,.04)"
-    : highlight === "worst"
-    ? "border-color:rgba(240,96,96,.35);background:rgba(240,96,96,.04)"
-    : "";
-
-  const hlBadge = highlight === "best"
-    ? `<span style="font-size:9px;color:var(--grn);background:var(--grn2);padding:1px 6px;border-radius:3px;margin-left:6px">BEST</span>`
-    : highlight === "worst"
-    ? `<span style="font-size:9px;color:var(--red);background:var(--red2);padding:1px 6px;border-radius:3px;margin-left:6px">WORST</span>`
-    : "";
-
-  // Highlight the sort field value
-  const l3cls  = playerSortField==="pis_last_3" ? "acc" : trend;
-  const l5cls  = playerSortField==="pis_last_5" ? "acc" : "";
-  const rolcls = playerSortField==="pis_rolling" ? "acc" : "";
-
-  return `<div class="player-card" style="${hlStyle}">
-    <div class="pc-meta">
-      <span class="pc-pos">${pos}</span>
-      <span style="font-size:11px;color:var(--t2)">${team.length>22?team.substring(0,22)+"…":team}</span>
-      ${hlBadge}
-    </div>
-    <div class="pc-name">${name}</div>
-    <div class="pc-stats">
-      <div class="pc-stat"><label>PIS Rolling</label><span class="${rolcls}">${pis.toFixed(2)}</span></div>
-      <div class="pc-stat"><label>Last 3</label><span class="${l3cls}">${pisL3.toFixed(2)}</span></div>
-      <div class="pc-stat"><label>Last 5</label><span class="${l5cls}">${pisL5.toFixed(2)}</span></div>
-      <div class="pc-stat"><label>Season avg</label><span class="muted">${pisS.toFixed(2)}</span></div>
-    </div>
-    <div class="pis-bar-wrap">
-      <div class="pis-bar-track"><div class="pis-bar-fill" style="width:${pct}%"></div></div>
-    </div>
-  </div>`;
+function getTeamName(row, lookup) {
+  const tn  = String(v(row,"team_name","") || "");
+  const tid = String(v(row,"team_id","")   || "");
+  // If team_name looks real — use it
+  if (tn && !tn.match(/^T_[0-9A-F]{6,}/i)) return tn;
+  // Lookup by team_id
+  if (tid && lookup[tid]) return lookup[tid];
+  return tid || "—";
 }
 
 function renderPlayers(rows) {
@@ -942,104 +913,132 @@ function renderPlayers(rows) {
     return;
   }
 
-  // Resolve unique team names (no T_XXXX hashes)
-  const teamMap = {};
-  rows.forEach(r => {
-    const tid  = String(v(r,"team_id","") || "");
-    const name = String(v(r,"team_name","") || "");
-    if (tid && name && !name.match(/^T_[0-9A-F]{8}$/i)) teamMap[tid] = name;
-  });
+  const lookup = buildTeamLookup();
 
-  // Teams list — use resolved names, deduplicated
-  const teamNames = [...new Set(Object.values(teamMap))].sort();
+  // Unique team names — resolved, deduplicated, sorted
+  const teamSet = new Set();
+  rows.forEach(r => { const n = getTeamName(r, lookup); if (n && n !== "—") teamSet.add(n); });
+  const teamNames = [...teamSet].sort();
 
+  // Filter bar
   const fBar = document.getElementById("players-filters");
   if (fBar) {
     const teamBtns = [{val:"all",label:"Wszystkie"},...teamNames.map(t=>({val:t,label:t}))].map(o =>
       `<button class="f-btn${o.val===playerTeamFilter?" act":""}" onclick="setPlayerFilter('${o.val}',this)">${o.label}</button>`
     ).join("");
-
-    const sortBtns = `
-      <div class="f-sep"></div>
-      <span style="font-size:11px;color:var(--t3)">Sortuj:</span>
-      <button class="f-btn${playerSortField==="pis_rolling"?" act":""}" onclick="setPlayerSort('pis_rolling',this)">Rolling</button>
-      <button class="f-btn${playerSortField==="pis_last_3"?" act":""}" onclick="setPlayerSort('pis_last_3',this)">Last 3</button>
-      <button class="f-btn${playerSortField==="pis_last_5"?" act":""}" onclick="setPlayerSort('pis_last_5',this)">Last 5</button>
-      <div class="f-sep"></div>
-      <button class="f-btn${playerSortDir==="desc"?" act":""}" onclick="setPlayerSortDir('desc',this)">↓ Desc</button>
-      <button class="f-btn${playerSortDir==="asc"?" act":""}" onclick="setPlayerSortDir('asc',this)">↑ Asc</button>`;
-
-    fBar.innerHTML = teamBtns + sortBtns;
+    const sep = `<div class="f-sep"></div>`;
+    const sortBtns = [
+      {f:"pis_rolling",l:"Rolling"},
+      {f:"pis_last_3", l:"Last 3"},
+      {f:"pis_last_5", l:"Last 5"}
+    ].map(s => `<button class="f-btn${playerSortField===s.f?" act":""}" onclick="setPlayerSort('${s.f}',this)">${s.l}</button>`).join("");
+    const dirBtns = `
+      <button class="f-btn${playerSortDir==="desc"?" act":""}" onclick="setPlayerSortDir('desc',this)">↓ Najlepsi</button>
+      <button class="f-btn${playerSortDir==="asc"?" act":""}" onclick="setPlayerSortDir('asc',this)">↑ Najgorsi</button>`;
+    fBar.innerHTML = teamBtns + sep + sortBtns + sep + dirBtns;
   }
 
-  // Filter by team
+  // Filter
   const filtered = playerTeamFilter === "all"
     ? rows
-    : rows.filter(r => {
-        const rname = resolveTeamName(r);
-        return rname === playerTeamFilter;
-      });
+    : rows.filter(r => getTeamName(r, lookup) === playerTeamFilter);
 
   setHtml("players-count", filtered.length + " zawodniczek");
 
-  // Sort
-  const sf = playerSortField;
-  const sorted = [...filtered].sort((a,b) => {
-    const av = num(v(a,sf,0)), bv = num(v(b,sf,0));
-    return playerSortDir === "desc" ? bv - av : av - bv;
-  });
-
-  if (sorted.length === 0) {
-    setHtml("players-grid", `<div class="empty">Brak zawodniczek dla tego filtra</div>`);
+  if (filtered.length === 0) {
+    setHtml("players-grid", `<div class="empty">Brak zawodniczek</div>`);
     return;
   }
 
+  // Sort
+  const sorted = [...filtered].sort((a,b) => {
+    const av = num(v(a,playerSortField,0)), bv = num(v(b,playerSortField,0));
+    return playerSortDir === "desc" ? bv - av : av - bv;
+  });
+
   const maxPis = Math.max(...sorted.map(r => num(v(r,"pis_rolling",0))));
+  const sf     = playerSortField;
+  const fLabel = sf==="pis_last_3"?"Last 3":sf==="pis_last_5"?"Last 5":"Rolling";
+  const bestRow  = sorted[0];
+  const worstRow = sorted[sorted.length - 1];
 
-  // Best / worst by sort field
-  const bestIdx  = playerSortDir === "desc" ? 0 : sorted.length - 1;
-  const worstIdx = playerSortDir === "desc" ? sorted.length - 1 : 0;
-  const bestId   = v(sorted[bestIdx],"player_id","");
-  const worstId  = v(sorted[worstIdx],"player_id","");
+  // Best / Worst banner
+  const banner = `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+    <div style="background:rgba(45,212,160,.06);border:1px solid rgba(45,212,160,.2);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;border-radius:50%;background:var(--grn2);display:flex;align-items:center;justify-content:center;color:var(--grn);font-size:13px;flex-shrink:0">▲</div>
+      <div>
+        <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Best ${fLabel}${playerTeamFilter!=="all"?" · "+playerTeamFilter:""}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--t1)">${v(bestRow,"player_name","normalized_player_name","")}</div>
+        <div style="font-size:11px;color:var(--t2)">${getTeamName(bestRow,lookup)} · <span style="color:var(--grn);font-family:var(--mono)">${num(v(bestRow,sf,0)).toFixed(2)}</span></div>
+      </div>
+    </div>
+    <div style="background:rgba(240,96,96,.06);border:1px solid rgba(240,96,96,.2);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px">
+      <div style="width:30px;height:30px;border-radius:50%;background:var(--red2);display:flex;align-items:center;justify-content:center;color:var(--red);font-size:13px;flex-shrink:0">▼</div>
+      <div>
+        <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Worst ${fLabel}${playerTeamFilter!=="all"?" · "+playerTeamFilter:""}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--t1)">${v(worstRow,"player_name","normalized_player_name","")}</div>
+        <div style="font-size:11px;color:var(--t2)">${getTeamName(worstRow,lookup)} · <span style="color:var(--red);font-family:var(--mono)">${num(v(worstRow,sf,0)).toFixed(2)}</span></div>
+      </div>
+    </div>
+  </div>`;
 
-  // Summary banner
-  const bestRow  = sorted[bestIdx];
-  const worstRow = sorted[worstIdx];
-  const fieldLabel = sf==="pis_last_3"?"Last 3":sf==="pis_last_5"?"Last 5":"Rolling";
-  const banner = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-      <div style="background:rgba(45,212,160,.06);border:1px solid rgba(45,212,160,.2);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:var(--grn2);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--grn);flex-shrink:0">▲</div>
-        <div>
-          <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Best ${fieldLabel} ${playerTeamFilter!=="all"?"· "+playerTeamFilter:""}</div>
-          <div style="font-size:13px;font-weight:500;color:var(--t1)">${v(bestRow,"player_name","normalized_player_name","")}</div>
-          <div style="font-size:11px;color:var(--t2)">${resolveTeamName(bestRow)} · <span style="color:var(--grn);font-family:var(--mono)">${num(v(bestRow,sf,0)).toFixed(2)}</span></div>
-        </div>
-      </div>
-      <div style="background:rgba(240,96,96,.06);border:1px solid rgba(240,96,96,.2);border-radius:8px;padding:12px 16px;display:flex;align-items:center;gap:10px">
-        <div style="width:32px;height:32px;border-radius:50%;background:var(--red2);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--red);flex-shrink:0">▼</div>
-        <div>
-          <div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:2px">Worst ${fieldLabel} ${playerTeamFilter!=="all"?"· "+playerTeamFilter:""}</div>
-          <div style="font-size:13px;font-weight:500;color:var(--t1)">${v(worstRow,"player_name","normalized_player_name","")}</div>
-          <div style="font-size:11px;color:var(--t2)">${resolveTeamName(worstRow)} · <span style="color:var(--red);font-family:var(--mono)">${num(v(worstRow,sf,0)).toFixed(2)}</span></div>
-        </div>
-      </div>
-    </div>`;
+  // Cards
+  const bestId  = v(bestRow,"player_id","");
+  const worstId = v(worstRow,"player_id","");
 
   const cards = sorted.map(row => {
-    const pid = v(row,"player_id","");
-    const hl  = pid===bestId?"best":pid===worstId?"worst":"";
-    return buildPlayerCard(row, maxPis, hl);
+    const pid   = v(row,"player_id","");
+    const name  = v(row,"player_name","normalized_player_name","") || "—";
+    const team  = getTeamName(row, lookup);
+    const pos   = v(row,"position","") || "?";
+    const pis   = num(v(row,"pis_rolling",0));
+    const pisL3 = num(v(row,"pis_last_3",0));
+    const pisL5 = num(v(row,"pis_last_5",0));
+    const pisS  = num(v(row,"pis_season",0));
+    const pct   = maxPis > 0 ? Math.round(pis/maxPis*100) : 0;
+    const trend = pisL3 > pisS ? "grn" : pisL3 < pisS*0.9 ? "red" : "muted";
+    const l3cls = sf==="pis_last_3" ? "acc" : trend;
+    const l5cls = sf==="pis_last_5" ? "acc" : "";
+    const rcls  = sf==="pis_rolling"? "acc" : "";
+    const isBest  = pid === bestId;
+    const isWorst = pid === worstId;
+    const hlBorder = isBest
+      ? "border-color:rgba(45,212,160,.35);background:rgba(45,212,160,.03)"
+      : isWorst
+      ? "border-color:rgba(240,96,96,.35);background:rgba(240,96,96,.03)"
+      : "";
+    const hlBadge = isBest
+      ? `<span style="font-size:9px;color:var(--grn);background:var(--grn2);padding:1px 6px;border-radius:3px">BEST</span>`
+      : isWorst
+      ? `<span style="font-size:9px;color:var(--red);background:var(--red2);padding:1px 6px;border-radius:3px">WORST</span>`
+      : "";
+
+    return `<div class="player-card" style="${hlBorder}">
+      <div class="pc-meta">
+        <span class="pc-pos">${pos}</span>
+        <span style="font-size:11px;color:var(--t2);flex:1">${team.length>22?team.substring(0,22)+"…":team}</span>
+        ${hlBadge}
+      </div>
+      <div class="pc-name">${name}</div>
+      <div class="pc-stats">
+        <div class="pc-stat"><label>PIS Rolling</label><span class="${rcls}">${pis.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Last 3</label><span class="${l3cls}">${pisL3.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Last 5</label><span class="${l5cls}">${pisL5.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Season avg</label><span class="muted">${pisS.toFixed(2)}</span></div>
+      </div>
+      <div class="pis-bar-wrap">
+        <div class="pis-bar-track"><div class="pis-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
   }).join("");
 
-  setHtml("players-grid", banner + `<div class="player-grid" style="margin-top:0">${cards}</div>`);
+  // Write banner + grid into the container (container already has player-grid class)
+  setHtml("players-grid", banner + cards);
 }
 
 function setPlayerFilter(val, btn) {
   playerTeamFilter = val;
-  document.querySelectorAll("#players-filters .f-btn").forEach(b => {
-    if (!b.onclick || b.onclick.toString().includes("setPlayerFilter")) b.classList.remove("act");
-  });
+  document.querySelectorAll("#players-filters .f-btn").forEach(b => b.classList.remove("act"));
   btn.classList.add("act");
   renderPlayers(DATA.players);
 }
