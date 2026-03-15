@@ -821,7 +821,70 @@ function renderPricing(rows) {
 }
 
 // ─── MATCHES ─────────────────────────────────────────────────
-let matchFilter = "all";
+let matchFilter = "upcoming";
+
+// ── Matches countdown timer handle ───────────────────────────
+let _matchCountdownInterval = null;
+
+function parseMatchDate(row) {
+  const raw = String(v(row,"match_datetime","") || "");
+  if (!raw) return null;
+  // Try ISO first
+  let d = new Date(raw);
+  if (!isNaN(d)) return d;
+  // Try "Saturday 21 March 2026 - 16:00"
+  const m = raw.match(/(\d{1,2})\s+(\w+)\s+(\d{4})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+  if (m) {
+    const months = {january:0,february:1,march:2,april:3,may:4,june:5,
+                    july:6,august:7,september:8,october:9,november:10,december:11};
+    const mo = months[m[2].toLowerCase()];
+    if (mo !== undefined) {
+      return new Date(parseInt(m[3]), mo, parseInt(m[1]),
+                      parseInt(m[4]), parseInt(m[5]));
+    }
+  }
+  // Try "samedi 21 mars 2026 - 16:00"
+  const mFR = raw.match(/(\d{1,2})\s+(\w+)\s+(\d{4})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+  if (mFR) {
+    const monthsFR = {janvier:0,février:1,mars:2,avril:3,mai:4,juin:5,
+                      juillet:6,août:7,septembre:8,octobre:9,novembre:10,décembre:11};
+    const mo = monthsFR[mFR[2].toLowerCase()];
+    if (mo !== undefined)
+      return new Date(parseInt(mFR[3]), mo, parseInt(mFR[1]),
+                      parseInt(mFR[4]), parseInt(mFR[5]));
+  }
+  return null;
+}
+
+function isUpcoming(row) {
+  const d = parseMatchDate(row);
+  if (!d) return false;
+  return d > new Date();
+}
+
+function formatCountdown(ms) {
+  if (ms <= 0) return "Teraz";
+  const s   = Math.floor(ms / 1000);
+  const min = Math.floor(s / 60) % 60;
+  const h   = Math.floor(s / 3600) % 24;
+  const d   = Math.floor(s / 86400);
+  if (d > 0)  return `za ${d}d ${h}h`;
+  if (h > 0)  return `za ${h}h ${min}m`;
+  return `za ${min}m`;
+}
+
+function formatMatchDate(row) {
+  const raw = String(v(row,"match_datetime","") || "");
+  const d   = parseMatchDate(row);
+  if (!d) return raw.substring(0, 16) || "—";
+  const days  = ["Nd","Pn","Wt","Śr","Cz","Pt","Sb"];
+  const day   = days[d.getDay()];
+  const dd    = String(d.getDate()).padStart(2,"0");
+  const mm    = String(d.getMonth()+1).padStart(2,"0");
+  const hh    = String(d.getHours()).padStart(2,"0");
+  const mi    = String(d.getMinutes()).padStart(2,"0");
+  return `${day} ${dd}.${mm} ${hh}:${mi}`;
+}
 
 function renderMatches(rows) {
   showLoading("matches", false);
@@ -830,42 +893,119 @@ function renderMatches(rows) {
     return;
   }
 
+  // Build filter bar once
   const fBar = document.getElementById("matches-filters");
-  if (fBar && !fBar.hasChildNodes()) {
-    fBar.innerHTML = ["Wszystkie","YES","NO_DATA"].map(f =>
-      `<button class="f-btn${f==="Wszystkie"?' act':''}" onclick="setMatchFilter('${f}',this)">${f==="YES"?"Zaimportowane":f==="NO_DATA"?"Brak danych":f}</button>`
+  if (fBar) {
+    const tabs = [
+      {val:"upcoming",  label:"Nadchodzące"},
+      {val:"all",       label:"Wszystkie"},
+      {val:"YES",       label:"Zaimportowane"},
+      {val:"NO_DATA",   label:"Brak danych"},
+    ];
+    fBar.innerHTML = tabs.map(t =>
+      `<button class="f-btn${matchFilter===t.val?" act":""}" onclick="setMatchFilter('${t.val}',this)">${t.label}</button>`
     ).join("");
   }
 
-  const filtered = matchFilter==="all" ? rows : rows.filter(r => String(v(r,"players_imported","")).toUpperCase() === matchFilter);
+  // Filter
+  let filtered;
+  if (matchFilter === "upcoming") {
+    filtered = rows.filter(r => isUpcoming(r));
+    // Sort ascending by date
+    filtered = [...filtered].sort((a,b) => {
+      const da = parseMatchDate(a), db = parseMatchDate(b);
+      return (da||0) - (db||0);
+    });
+  } else if (matchFilter === "all") {
+    filtered = [...rows].sort((a,b) => {
+      const da = parseMatchDate(a), db = parseMatchDate(b);
+      return (db||0) - (da||0);
+    });
+  } else {
+    filtered = rows.filter(r => String(v(r,"players_imported","")).toUpperCase() === matchFilter);
+  }
+
   setHtml("matches-count", filtered.length + " / " + rows.length + " meczów");
 
-  const html = filtered.map(row => {
-    const home = v(row,"home_team","") || "?";
-    const away = v(row,"away_team","") || "?";
-    const dt   = String(v(row,"match_datetime","") || "").substring(0,16);
-    const hS   = v(row,"home_sets","") || "";
-    const aS   = v(row,"away_sets","") || "";
-    const venue= v(row,"venue","") || "";
-    const imp  = String(v(row,"players_imported","")).toUpperCase();
-    const impBadge = imp==="YES"?`<span class="badge b-live">Imported</span>`:imp==="NO_DATA"?`<span class="badge b-nobet">No data</span>`:`<span class="badge b-pre">Pending</span>`;
+  const now = new Date();
 
-    return `<div class="match-item">
-      <div class="mi-time">${dt||"—"}</div>
+  const html = filtered.map(row => {
+    const home   = v(row,"home_team","")  || "?";
+    const away   = v(row,"away_team","")  || "?";
+    const hS     = v(row,"home_sets","")  || "";
+    const aS     = v(row,"away_sets","")  || "";
+    const venue  = v(row,"venue","")      || "";
+    const mvp    = v(row,"mvp","")        || "";
+    const imp    = String(v(row,"players_imported","")).toUpperCase();
+    const matchD = parseMatchDate(row);
+    const upcoming = matchD && matchD > now;
+    const dtLabel  = formatMatchDate(row);
+    const msLeft   = matchD ? matchD - now : null;
+
+    // Countdown badge
+    let countdownHtml = "";
+    if (upcoming && msLeft !== null) {
+      const cdId = "cd_" + String(v(row,"match_id","")).replace(/\W/g,"");
+      countdownHtml = `<span id="${cdId}"
+        data-target="${matchD.getTime()}"
+        style="font-family:var(--mono);font-size:11px;color:var(--grn);
+          background:var(--grn2);padding:2px 8px;border-radius:4px;
+          border:1px solid rgba(45,212,160,.2)">
+        ${formatCountdown(msLeft)}
+      </span>`;
+    }
+
+    // Status badge — only for past matches
+    let statusHtml = "";
+    if (!upcoming) {
+      statusHtml = imp==="YES"
+        ? `<span class="badge b-live">Imported</span>`
+        : imp==="NO_DATA"
+        ? `<span class="badge b-nobet">No data</span>`
+        : `<span class="badge b-pre">Pending</span>`;
+    }
+
+    // Score — only for past
+    const scoreHtml = (!upcoming && hS && aS)
+      ? `<span style="font-family:var(--mono);font-size:14px;font-weight:500">${hS}–${aS}</span>`
+      : "";
+
+    return `<div class="match-item" style="grid-template-columns:90px 1fr auto auto">
+      <div class="mi-time">
+        <div style="font-family:var(--mono);font-size:12px;color:var(--t1)">${dtLabel}</div>
+      </div>
       <div>
         <div class="mi-teams">${home} <span class="muted">vs</span> ${away}</div>
         ${venue?`<div class="mi-venue">${venue}</div>`:""}
+        ${mvp&&!upcoming?`<div style="font-size:10px;color:var(--t3);margin-top:2px">MVP: ${mvp}</div>`:""}
       </div>
-      <div class="mi-score">${hS&&aS?`${hS}–${aS}`:"—"}</div>
-      <div>${impBadge}</div>
+      <div style="display:flex;align-items:center;gap:8px">
+        ${scoreHtml}
+        ${countdownHtml}
+      </div>
+      <div>${statusHtml}</div>
     </div>`;
   }).join("");
 
-  setHtml("matches-list", html);
+  setHtml("matches-list", html || `<div class="empty">Brak meczów w tej kategorii</div>`);
+
+  // Start live countdown ticker
+  if (_matchCountdownInterval) clearInterval(_matchCountdownInterval);
+  if (matchFilter === "upcoming") {
+    _matchCountdownInterval = setInterval(() => {
+      document.querySelectorAll("[data-target]").forEach(el => {
+        const target = parseInt(el.dataset.target);
+        const ms     = target - Date.now();
+        el.textContent = formatCountdown(ms);
+        if (ms <= 0) el.style.color = "var(--red)";
+      });
+    }, 30000); // update every 30s
+  }
 }
 
 function setMatchFilter(val, btn) {
-  matchFilter = val==="Wszystkie" ? "all" : val;
+  matchFilter = val;
+  if (_matchCountdownInterval) { clearInterval(_matchCountdownInterval); _matchCountdownInterval = null; }
   document.querySelectorAll("#matches-filters .f-btn").forEach(b => b.classList.remove("act"));
   btn.classList.add("act");
   renderMatches(DATA.matches);
