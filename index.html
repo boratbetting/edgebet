@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EdgeBet · FR_LAF_W Intelligence</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+/* ─── RESET & TOKENS ─────────────────────────────────────── */
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080b10;
+  --s1:#0d1117;
+  --s2:#111820;
+  --s3:#161e2a;
+  --s4:#1c2535;
+  --bd:rgba(99,155,255,0.08);
+  --bd2:rgba(99,155,255,0.16);
+  --bd3:rgba(99,155,255,0.28);
+  --t1:#dce8f5;
+  --t2:#7a93b0;
+  --t3:#3d5168;
+  --acc:#4c8ef5;
+  --acc2:#2563d4;
+  --grn:#2dd4a0;
+  --grn2:rgba(45,212,160,0.12);
+  --amb:#f0a930;
+  --amb2:rgba(240,169,48,0.12);
+  --red:#f06060;
+  --red2:rgba(240,96,96,0.12);
+  --pur:#9b7eff;
+  --mono:'IBM Plex Mono',monospace;
+  --sans:'IBM Plex Sans',sans-serif;
+}
+html,body{height:100%;background:var(--bg);color:var(--t1);font-family:var(--sans);font-size:14px;line-height:1.5;overflow-x:hidden}
+
+/* ─── LOGIN SCREEN ───────────────────────────────────────── */
+#login-screen{
+  position:fixed;inset:0;z-index:1000;
+  background:var(--bg);
+  display:flex;align-items:center;justify-content:center;
+}
+.login-card{
+  background:var(--s1);border:1px solid var(--bd2);
+  border-radius:12px;padding:40px 48px;width:360px;text-align:center;
+}
+.login-logo{
+  display:inline-flex;align-items:center;gap:10px;
+  font-family:var(--mono);font-size:20px;color:var(--t1);margin-bottom:32px;
+}
+.login-logo svg{flex-shrink:0}
+.login-label{font-size:11px;color:var(--t2);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px;text-align:left}
+.login-input{
+  width:100%;padding:10px 14px;background:var(--s3);
+  border:1px solid var(--bd2);border-radius:6px;
+  color:var(--t1);font-family:var(--mono);font-size:14px;
+  outline:none;transition:border .15s;
+}
+.login-input:focus{border-color:var(--acc)}
+.login-btn{
+  margin-top:20px;width:100%;padding:11px;
+  background:var(--acc);border:none;border-radius:6px;
+  color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;
+  cursor:pointer;transition:background .15s;
+}
+.login-btn:hover{background:var(--acc2)}
+.login-err{font-size:12px;color:var(--red);margin-top:10px;height:18px}
+.login-note{font-size:11px;color:var(--t3);margin-top:24px;line-height:1.6}
+
+/* ─── MAIN APP ───────────────────────────────────────────── */
+#app{display:none;height:100vh;display:none;flex-direction:column}
+#app.visible{display:flex}
+
+/* ─── TOPBAR ─────────────────────────────────────────────── */
+.topbar{
+  height:50px;background:var(--s1);
+  border-bottom:1px solid var(--bd);
+  display:flex;align-items:center;padding:0 20px;gap:0;
+  flex-shrink:0;
+}
+.logo{
+  font-family:var(--mono);font-size:14px;color:var(--t1);
+  display:flex;align-items:center;gap:8px;margin-right:24px;
+}
+.logo em{color:var(--acc);font-style:normal}
+.nav-tab{
+  height:50px;padding:0 16px;display:flex;align-items:center;
+  font-size:12px;color:var(--t2);cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:color .12s;white-space:nowrap;
+}
+.nav-tab:hover{color:var(--t1)}
+.nav-tab.act{color:var(--t1);border-bottom-color:var(--acc)}
+.topbar-right{margin-left:auto;display:flex;align-items:center;gap:14px}
+.league-tag{
+  font-family:var(--mono);font-size:11px;color:var(--t3);
+  background:var(--s3);padding:3px 8px;border-radius:4px;
+  border:1px solid var(--bd);
+}
+.refresh-btn{
+  font-size:11px;color:var(--t2);background:var(--s3);
+  border:1px solid var(--bd);padding:5px 10px;border-radius:5px;
+  cursor:pointer;display:flex;align-items:center;gap:5px;
+}
+.refresh-btn:hover{color:var(--t1);border-color:var(--bd2)}
+.logout-btn{font-size:11px;color:var(--t3);cursor:pointer}
+.logout-btn:hover{color:var(--red)}
+
+/* ─── CONTENT AREA ───────────────────────────────────────── */
+.content{flex:1;overflow-y:auto;padding:20px}
+.screen{display:none}
+.screen.act{display:block}
+
+/* ─── LOADING / ERROR ────────────────────────────────────── */
+.loading{
+  display:flex;align-items:center;justify-content:center;
+  height:200px;color:var(--t3);font-size:12px;
+  flex-direction:column;gap:12px;
+}
+.spinner{
+  width:20px;height:20px;border:2px solid var(--bd2);
+  border-top-color:var(--acc);border-radius:50%;
+  animation:spin .8s linear infinite;
+}
+@keyframes spin{to{transform:rotate(360deg)}}
+.error-box{
+  background:var(--red2);border:1px solid rgba(240,96,96,.25);
+  border-radius:8px;padding:16px 20px;color:var(--red);font-size:13px;
+  margin-bottom:16px;
+}
+
+/* ─── KPI CARDS ──────────────────────────────────────────── */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+.kpi{
+  background:var(--s2);border:1px solid var(--bd);
+  border-radius:8px;padding:14px 16px;
+}
+.kpi-label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.kpi-val{font-size:22px;font-weight:500;color:var(--t1);font-family:var(--mono)}
+.kpi-sub{font-size:11px;color:var(--t3);margin-top:3px}
+.kpi-grn .kpi-val{color:var(--grn)}
+.kpi-red .kpi-val{color:var(--red)}
+.kpi-amb .kpi-val{color:var(--amb)}
+.kpi-acc .kpi-val{color:var(--acc)}
+
+/* ─── SECTION HEADER ─────────────────────────────────────── */
+.sec-head{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:12px;
+}
+.sec-title{font-size:11px;color:var(--t3);text-transform:uppercase;letter-spacing:.06em}
+
+/* ─── FILTER BAR ─────────────────────────────────────────── */
+.filter-bar{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.f-sep{width:1px;height:16px;background:var(--bd);margin:0 2px}
+.f-btn{
+  font-size:11px;padding:4px 10px;border-radius:5px;
+  border:1px solid var(--bd);background:transparent;
+  color:var(--t2);cursor:pointer;transition:all .1s;
+}
+.f-btn:hover{color:var(--t1);border-color:var(--bd2)}
+.f-btn.act{background:var(--s3);color:var(--t1);border-color:var(--bd2)}
+
+/* ─── TABLE ──────────────────────────────────────────────── */
+.eb-table-wrap{overflow-x:auto}
+.eb-table{width:100%;border-collapse:collapse;font-size:12px}
+.eb-table th{
+  font-size:10px;color:var(--t3);text-transform:uppercase;
+  letter-spacing:.06em;padding:8px 12px;text-align:left;
+  border-bottom:1px solid var(--bd);white-space:nowrap;
+}
+.eb-table td{
+  padding:11px 12px;border-bottom:1px solid var(--bd);
+  vertical-align:top;color:var(--t1);
+}
+.eb-table tbody tr{cursor:pointer;transition:background .1s}
+.eb-table tbody tr:hover td{background:var(--s2)}
+.eb-table .sub{font-size:11px;color:var(--t2);margin-top:2px}
+
+/* ─── BADGES ─────────────────────────────────────────────── */
+.badge{
+  display:inline-block;font-size:9px;padding:2px 7px;
+  border-radius:3px;font-weight:500;letter-spacing:.04em;
+  font-family:var(--mono);
+}
+.b-strong{background:var(--red2);color:var(--red);border:1px solid rgba(240,96,96,.25)}
+.b-value{background:var(--grn2);color:var(--grn);border:1px solid rgba(45,212,160,.2)}
+.b-watch{background:var(--amb2);color:var(--amb);border:1px solid rgba(240,169,48,.2)}
+.b-nobet{background:rgba(255,255,255,.03);color:var(--t3);border:1px solid var(--bd)}
+.b-live{background:rgba(45,212,160,.1);color:var(--grn);border:1px solid rgba(45,212,160,.2)}
+.b-pre{background:rgba(76,142,245,.1);color:var(--acc);border:1px solid rgba(76,142,245,.2)}
+.live-dot{
+  display:inline-block;width:6px;height:6px;
+  border-radius:50%;background:var(--grn);
+  margin-right:5px;animation:pulse 1.5s infinite;
+}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ─── MONO VALUES ────────────────────────────────────────── */
+.mono{font-family:var(--mono)}
+.grn{color:var(--grn)}
+.red{color:var(--red)}
+.amb{color:var(--amb)}
+.acc{color:var(--acc)}
+.muted{color:var(--t2)}
+.strong-row td{background:rgba(240,96,96,.04)}
+
+/* ─── PANEL ──────────────────────────────────────────────── */
+.panel{
+  background:var(--s2);border:1px solid var(--bd);
+  border-radius:8px;padding:16px 18px;
+}
+.panel-title{
+  font-size:10px;color:var(--t3);text-transform:uppercase;
+  letter-spacing:.06em;margin-bottom:14px;
+}
+
+/* ─── TEAM PRICING GRID ──────────────────────────────────── */
+.pricing-grid{display:grid;gap:10px}
+.pricing-row{
+  background:var(--s2);border:1px solid var(--bd);
+  border-radius:8px;padding:14px 16px;
+  display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 100px;
+  align-items:center;gap:10px;cursor:pointer;transition:border-color .12s;
+}
+.pricing-row:hover{border-color:var(--bd2)}
+.pricing-row.alert-strong{border-left:3px solid var(--red)}
+.pricing-row.alert-value{border-left:3px solid var(--grn)}
+.pricing-row.alert-watch{border-left:3px solid var(--amb)}
+.pr-teams{font-size:13px;font-weight:500}
+.pr-sub{font-size:11px;color:var(--t2);margin-top:2px}
+.pr-metric label{font-size:10px;color:var(--t3);display:block;margin-bottom:2px}
+.pr-metric span{font-family:var(--mono);font-size:13px}
+
+/* ─── PLAYER CARDS ───────────────────────────────────────── */
+.player-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+  gap:10px;
+}
+.player-card{
+  background:var(--s2);border:1px solid var(--bd);
+  border-radius:8px;padding:14px 16px;
+  transition:border-color .12s;
+}
+.player-card:hover{border-color:var(--bd2)}
+.pc-name{font-size:13px;font-weight:500;margin-bottom:4px}
+.pc-meta{font-size:11px;color:var(--t2);margin-bottom:12px;display:flex;gap:8px}
+.pc-pos{
+  font-family:var(--mono);font-size:10px;padding:2px 6px;
+  background:var(--s4);border-radius:3px;color:var(--acc);
+}
+.pc-stats{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.pc-stat label{font-size:10px;color:var(--t3);display:block}
+.pc-stat span{font-family:var(--mono);font-size:14px;font-weight:500}
+.pis-bar-wrap{margin-top:10px}
+.pis-bar-track{height:3px;background:var(--s4);border-radius:2px;overflow:hidden}
+.pis-bar-fill{height:100%;background:var(--acc);border-radius:2px;transition:width .4s}
+
+/* ─── MATCHES ────────────────────────────────────────────── */
+.match-item{
+  background:var(--s2);border:1px solid var(--bd);
+  border-radius:8px;padding:14px 18px;margin-bottom:8px;
+  display:grid;grid-template-columns:80px 1fr 80px 100px;
+  align-items:center;gap:12px;cursor:pointer;
+  transition:border-color .12s;
+}
+.match-item:hover{border-color:var(--bd2)}
+.mi-time{font-family:var(--mono);font-size:12px;color:var(--t2);text-align:center}
+.mi-teams{font-size:13px;font-weight:500}
+.mi-score{font-family:var(--mono);font-size:13px;text-align:center;color:var(--t1)}
+.mi-venue{font-size:11px;color:var(--t3)}
+
+/* ─── ALERT DETAIL DRAWER ────────────────────────────────── */
+.drawer-overlay{
+  position:fixed;inset:0;background:rgba(0,0,0,.6);
+  z-index:500;display:none;align-items:flex-end;
+}
+.drawer-overlay.open{display:flex}
+.drawer{
+  background:var(--s1);border-top:1px solid var(--bd2);
+  width:100%;max-height:80vh;overflow-y:auto;padding:24px;
+}
+.drawer-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}
+.drawer-close{color:var(--t3);cursor:pointer;font-size:18px;line-height:1}
+.drawer-close:hover{color:var(--t1)}
+.drawer-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
+.d-metric{background:var(--s3);border-radius:6px;padding:12px 14px}
+.d-metric label{font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.05em;display:block;margin-bottom:4px}
+.d-metric span{font-family:var(--mono);font-size:16px;font-weight:500}
+.rationale-box{
+  background:var(--s3);border-radius:6px;padding:14px 16px;
+  border-left:3px solid var(--acc);
+  font-size:12px;color:var(--t2);line-height:1.7;
+}
+
+/* ─── EMPTY STATE ────────────────────────────────────────── */
+.empty{
+  text-align:center;padding:60px 20px;color:var(--t3);
+}
+.empty svg{margin-bottom:12px;opacity:.3}
+
+/* ─── RESPONSIVE ─────────────────────────────────────────── */
+@media(max-width:768px){
+  .kpi-row{grid-template-columns:repeat(2,1fr)}
+  .pricing-row{grid-template-columns:1fr 1fr;grid-template-rows:auto auto auto}
+  .drawer-grid{grid-template-columns:repeat(2,1fr)}
+  .player-grid{grid-template-columns:1fr 1fr}
+}
+@media(max-width:480px){
+  .kpi-row{grid-template-columns:1fr 1fr}
+  .match-item{grid-template-columns:60px 1fr;grid-template-rows:auto auto}
+  .player-grid{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<!-- ─── LOGIN ─────────────────────────────────────────────── -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+        <polygon points="11,2 20,11 11,20 2,11" fill="none" stroke="#4c8ef5" stroke-width="1.5"/>
+        <circle cx="11" cy="11" r="3.5" fill="#4c8ef5"/>
+      </svg>
+      <em>Edge</em>Bet
+    </div>
+    <div class="login-label">Access token</div>
+    <input class="login-input" type="password" id="pin-input" placeholder="Wpisz token dostępu" autocomplete="off">
+    <button class="login-btn" onclick="tryLogin()">Wejdź →</button>
+    <div class="login-err" id="login-err"></div>
+    <div class="login-note">FR_LAF_W Intelligence Platform · PoC v0</div>
+  </div>
+</div>
+
+<!-- ─── APP ───────────────────────────────────────────────── -->
+<div id="app">
+
+  <nav class="topbar">
+    <div class="logo">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+        <polygon points="8,1 15,8 8,15 1,8" fill="none" stroke="#4c8ef5" stroke-width="1.4"/>
+        <circle cx="8" cy="8" r="2.5" fill="#4c8ef5"/>
+      </svg>
+      <em>Edge</em>Bet
+    </div>
+    <div class="nav-tab act" onclick="switchTab('alerts')" id="tab-alerts">Alert Log</div>
+    <div class="nav-tab" onclick="switchTab('pricing')" id="tab-pricing">Team Pricing</div>
+    <div class="nav-tab" onclick="switchTab('matches')" id="tab-matches">Matches</div>
+    <div class="nav-tab" onclick="switchTab('players')" id="tab-players">Player Rolling</div>
+    <div class="nav-tab" onclick="switchTab('lineup')" id="tab-lineup">Live Lineup</div>
+    <div class="topbar-right">
+      <span class="league-tag">FR_LAF_W</span>
+      <button class="refresh-btn" onclick="refreshAll()">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M10.5 6a4.5 4.5 0 1 1-1.3-3.2"/><path d="M9 1v3h3" stroke-linecap="round"/>
+        </svg>
+        Odśwież
+      </button>
+      <span class="logout-btn" onclick="logout()">Wyloguj</span>
+    </div>
+  </nav>
+
+  <div class="content">
+
+    <!-- ALERTS TAB -->
+    <div class="screen act" id="screen-alerts">
+      <div id="alerts-kpi" class="kpi-row"></div>
+      <div class="sec-head">
+        <div class="filter-bar" id="alerts-filters"></div>
+        <span class="muted" style="font-size:11px" id="alerts-count"></span>
+      </div>
+      <div class="eb-table-wrap">
+        <table class="eb-table" id="alerts-table">
+          <thead>
+            <tr>
+              <th>Czas</th><th>Mecz</th><th>Strona</th>
+              <th>Model WP</th><th>Market WP</th><th>Edge</th><th>EV</th>
+              <th>Alert</th><th>Conf.</th><th>Decyzja</th>
+            </tr>
+          </thead>
+          <tbody id="alerts-tbody"></tbody>
+        </table>
+      </div>
+      <div id="alerts-loading" class="loading"><div class="spinner"></div><span>Ładowanie alertów...</span></div>
+    </div>
+
+    <!-- TEAM PRICING TAB -->
+    <div class="screen" id="screen-pricing">
+      <div id="pricing-kpi" class="kpi-row"></div>
+      <div class="sec-head">
+        <div class="filter-bar" id="pricing-filters"></div>
+        <span class="muted" style="font-size:11px" id="pricing-count"></span>
+      </div>
+      <div id="pricing-grid" class="pricing-grid"></div>
+      <div id="pricing-loading" class="loading"><div class="spinner"></div><span>Ładowanie wycen...</span></div>
+    </div>
+
+    <!-- MATCHES TAB -->
+    <div class="screen" id="screen-matches">
+      <div class="sec-head" style="margin-bottom:16px">
+        <div class="filter-bar" id="matches-filters"></div>
+        <span class="muted" style="font-size:11px" id="matches-count"></span>
+      </div>
+      <div id="matches-list"></div>
+      <div id="matches-loading" class="loading"><div class="spinner"></div><span>Ładowanie meczów...</span></div>
+    </div>
+
+    <!-- PLAYERS TAB -->
+    <div class="screen" id="screen-players">
+      <div class="sec-head" style="margin-bottom:16px">
+        <div class="filter-bar" id="players-filters"></div>
+        <span class="muted" style="font-size:11px" id="players-count"></span>
+      </div>
+      <div id="players-grid" class="player-grid"></div>
+      <div id="players-loading" class="loading"><div class="spinner"></div><span>Ładowanie zawodniczek...</span></div>
+    </div>
+
+    <!-- LIVE LINEUP TAB -->
+    <div class="screen" id="screen-lineup">
+      <div class="sec-head" style="margin-bottom:16px">
+        <div class="filter-bar" id="lineup-filters"></div>
+      </div>
+      <div id="lineup-content"></div>
+      <div id="lineup-loading" class="loading"><div class="spinner"></div><span>Ładowanie składów...</span></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- DETAIL DRAWER -->
+<div class="drawer-overlay" id="drawer-overlay" onclick="closeDrawer(event)">
+  <div class="drawer" id="drawer-content"></div>
+</div>
+
+<script>
+// ─── CONFIG ────────────────────────────────────────────────
+// KROK 1: Wklej URL swojego Google Apps Script Web App
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx03tm3IjLRs6CXIvh7F69oBxKbyiqG2JDzWI3xXFMEf95RHC6EYMhX8A2BIUI0Hjmm8w/exec";
+// KROK 2: Token musi pasować do ACCESS_TOKEN w Code.gs
+const VALID_TOKEN = "edgebet2025poc";
+
+// Mapowanie zakładek Sheets → nazwy w API
+const SHEET_NAMES = {
+  alerts:  "alerts_log",
+  pricing: "team_pricing",
+  matches: "matches",
+  players: "player_rolling",
+  lineup:  "live_lineups",
+};
+
+// Cache danych
+const DATA = { alerts:[], pricing:[], matches:[], players:[], lineup:[] };
+let activeTab = "alerts";
+let userToken = "";
+
+// ─── AUTH ───────────────────────────────────────────────────
+function tryLogin() {
+  const val = document.getElementById("pin-input").value.trim();
+  if (val === VALID_TOKEN) {
+    userToken = val;
+    sessionStorage.setItem("eb_token", val);
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app").classList.add("visible");
+    loadTab("alerts");
+  } else {
+    document.getElementById("login-err").textContent = "Nieprawidłowy token.";
+  }
+}
+
+function logout() {
+  sessionStorage.removeItem("eb_token");
+  location.reload();
+}
+
+document.getElementById("pin-input").addEventListener("keydown", e => {
+  if (e.key === "Enter") tryLogin();
+});
+
+// Auto-login z sessionStorage
+window.addEventListener("load", () => {
+  const saved = sessionStorage.getItem("eb_token");
+  if (saved === VALID_TOKEN) {
+    userToken = saved;
+    document.getElementById("login-screen").style.display = "none";
+    document.getElementById("app").classList.add("visible");
+    loadTab("alerts");
+  }
+});
+
+// ─── FETCH ──────────────────────────────────────────────────
+async function fetchSheet(sheetKey) {
+  const name = SHEET_NAMES[sheetKey];
+  if (!name) return [];
+  const url = `${APPS_SCRIPT_URL}?token=${userToken}&sheet=${name}`;
+  const resp = await fetch(url);
+  const json = await resp.json();
+  if (json.error) throw new Error(json.error);
+  return json.data || [];
+}
+
+async function loadTab(tab) {
+  if (!DATA[tab] || DATA[tab].length === 0) {
+    await loadData(tab);
+  }
+  renderTab(tab);
+}
+
+async function loadData(tab) {
+  showLoading(tab, true);
+  try {
+    DATA[tab] = await fetchSheet(tab);
+  } catch (e) {
+    console.error("Load error:", e);
+    DATA[tab] = [];
+    showError(tab, e.message);
+  } finally {
+    showLoading(tab, false);
+  }
+}
+
+async function refreshAll() {
+  Object.keys(DATA).forEach(k => DATA[k] = []);
+  await loadData(activeTab);
+  renderTab(activeTab);
+}
+
+function showLoading(tab, show) {
+  const el = document.getElementById(`${tab}-loading`);
+  if (el) el.style.display = show ? "flex" : "none";
+}
+
+function showError(tab, msg) {
+  const screen = document.getElementById(`screen-${tab}`);
+  if (!screen) return;
+  let err = screen.querySelector(".error-box");
+  if (!err) { err = document.createElement("div"); err.className = "error-box"; screen.prepend(err); }
+  err.textContent = `Błąd ładowania: ${msg}`;
+}
+
+// ─── NAVIGATION ─────────────────────────────────────────────
+function switchTab(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".nav-tab").forEach(t => t.classList.remove("act"));
+  document.getElementById("tab-" + tab).classList.add("act");
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("act"));
+  document.getElementById("screen-" + tab).classList.add("act");
+  loadTab(tab);
+}
+
+function renderTab(tab) {
+  const fn = { alerts:renderAlerts, pricing:renderPricing, matches:renderMatches, players:renderPlayers, lineup:renderLineup };
+  if (fn[tab]) fn[tab](DATA[tab]);
+}
+
+// ─── HELPERS ────────────────────────────────────────────────
+function v(row, ...keys) {
+  for (const k of keys) {
+    if (row[k] !== undefined && row[k] !== null && row[k] !== "") return row[k];
+  }
+  return null;
+}
+
+function num(val, def=0) {
+  const n = parseFloat(val);
+  return isNaN(n) ? def : n;
+}
+
+function pct(val) { return (num(val)*100).toFixed(1) + "%"; }
+function pp(val)  { const n=num(val); return (n>=0?"+":"")+n.toFixed(1)+"pp"; }
+function odds(val){ return num(val).toFixed(2); }
+function mono(str){ return `<span class="mono">${str}</span>`; }
+
+function decisionBadge(d) {
+  if (!d) return `<span class="badge b-nobet">—</span>`;
+  const s = String(d).toUpperCase();
+  if (s.includes("STRONG")) return `<span class="badge b-strong">STRONG BET</span>`;
+  if (s === "BET" || s === "VALUE" || s.includes("VALUE")) return `<span class="badge b-value">VALUE</span>`;
+  if (s === "WATCH") return `<span class="badge b-watch">WATCH</span>`;
+  return `<span class="badge b-nobet">NO BET</span>`;
+}
+
+function edgeColor(val) {
+  const n = num(val);
+  if (n >= 0.06) return "red";
+  if (n >= 0.04) return "grn";
+  if (n >= 0.02) return "amb";
+  return "muted";
+}
+
+function kpiCard(label, val, sub, cls="") {
+  return `<div class="kpi ${cls}"><div class="kpi-label">${label}</div><div class="kpi-val">${val}</div>${sub?`<div class="kpi-sub">${sub}</div>`:""}</div>`;
+}
+
+function setHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
+}
+
+function filterButtons(containerId, options, onSelect, initial) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.innerHTML = options.map((o,i) =>
+    `<button class="f-btn${o.val===initial?' act':''}" data-val="${o.val}" onclick="handleFilter('${containerId}',this,'${o.val}',(v)=>{${onSelect}})">${o.label}</button>`
+  ).join("") ;
+}
+
+// ─── ALERTS ─────────────────────────────────────────────────
+let alertFilter = "all";
+
+function renderAlerts(rows) {
+  showLoading("alerts", false);
+  if (!rows || rows.length === 0) {
+    setHtml("alerts-tbody", `<tr><td colspan="10"><div class="empty">Brak alertów</div></td></tr>`);
+    return;
+  }
+
+  // KPI
+  const strong = rows.filter(r => String(v(r,"decision","alert","")).toUpperCase().includes("STRONG")).length;
+  const valued = rows.filter(r => String(v(r,"decision","alert","")).toUpperCase().includes("VALUE") || String(v(r,"decision","alert","")).toUpperCase().includes("BET")).length;
+  const edges  = rows.map(r => num(v(r,"edge","edge_home_pp",0))).filter(n=>n>0);
+  const avgEdge = edges.length ? (edges.reduce((a,b)=>a+b,0)/edges.length*100).toFixed(1) : "—";
+
+  setHtml("alerts-kpi",
+    kpiCard("Total alertów", rows.length, `${strong} strong · ${valued} value`, "") +
+    kpiCard("Strong alerts", strong, "Edge > 6pp confirmed", strong>0?"kpi-red":"") +
+    kpiCard("Value signals", valued, "Edge 4–6pp", valued>0?"kpi-grn":"") +
+    kpiCard("Avg edge", avgEdge+"pp", "Wszystkie pozytywne", "kpi-acc")
+  );
+  setHtml("alerts-count", rows.length + " alertów");
+
+  // Filters
+  const decisions = [...new Set(rows.map(r => String(v(r,"decision","alert","")).toUpperCase()))].filter(Boolean);
+  const filterOpts = [
+    {label:"Wszystkie", val:"all"},
+    ...decisions.map(d => ({label:d.charAt(0)+d.slice(1).toLowerCase(), val:d}))
+  ];
+
+  const fBar = document.getElementById("alerts-filters");
+  if (fBar) {
+    fBar.innerHTML = filterOpts.map(o =>
+      `<button class="f-btn${o.val===alertFilter?' act':''}" onclick="setAlertFilter('${o.val}')">${o.label}</button>`
+    ).join("");
+  }
+
+  renderAlertsTable(rows);
+}
+
+function setAlertFilter(val) {
+  alertFilter = val;
+  document.querySelectorAll("#alerts-filters .f-btn").forEach(b => {
+    b.classList.toggle("act", b.textContent.toLowerCase() === val.toLowerCase() || (val==="all" && b.textContent==="Wszystkie"));
+  });
+  renderAlertsTable(DATA.alerts);
+}
+
+function renderAlertsTable(rows) {
+  const filtered = alertFilter === "all" ? rows : rows.filter(r => String(v(r,"decision","alert","")).toUpperCase() === alertFilter);
+
+  const tbody = filtered.map(row => {
+    const dec = String(v(row,"decision","alert","")).toUpperCase();
+    const isStrong = dec.includes("STRONG");
+    const edge = num(v(row,"edge","edge_home_pp",0));
+    const ecls = edgeColor(edge);
+    const modelWP = num(v(row,"model_prob","wp_home_live","modelWP",0));
+    const mktWP   = num(v(row,"market_prob","market_prob_home","marketWP",0));
+    const ts = v(row,"timestamp","created_at","alert_id","") || "—";
+    const matchStr = [v(row,"home_team","match_id",""), v(row,"away_team","")].filter(Boolean).join(" vs ") || v(row,"match_id","—");
+    const side = v(row,"team_side_or_bet_side","side","") || "—";
+    const conf = v(row,"confidence","") || "—";
+    const rationale = v(row,"rationale","reason","") || "";
+    const ev = num(v(row,"ev_home","ev",0));
+
+    return `<tr class="${isStrong?'strong-row':''}" onclick='openAlertDrawer(${JSON.stringify(JSON.stringify(row))})'>
+      <td class="mono muted" style="font-size:11px">${String(ts).substring(0,16)}</td>
+      <td><div>${matchStr}</div>${rationale?`<div class="sub">${String(rationale).substring(0,80)}</div>`:""}</td>
+      <td><span class="badge b-pre">${side}</span></td>
+      <td class="mono">${modelWP>0?pct(modelWP):"—"}</td>
+      <td class="mono muted">${mktWP>0?pct(mktWP):"—"}</td>
+      <td class="mono ${ecls}">${edge!==0?pp(edge):"—"}</td>
+      <td class="mono ${ev>0?'grn':'muted'}">${ev!==0?(ev>0?"+":"")+ev.toFixed(3):"—"}</td>
+      <td>${decisionBadge(dec)}</td>
+      <td class="mono muted">${conf}</td>
+      <td>${decisionBadge(dec)}</td>
+    </tr>`;
+  }).join("");
+
+  setHtml("alerts-tbody", tbody || `<tr><td colspan="10"><div class="empty">Brak wyników dla tego filtra</div></td></tr>`);
+}
+
+function openAlertDrawer(jsonStr) {
+  const row = JSON.parse(jsonStr);
+  const dec = String(v(row,"decision","alert","")).toUpperCase();
+  const edge = num(v(row,"edge","edge_home_pp",0));
+  const modelWP = num(v(row,"model_prob","wp_home_live",0));
+  const mktWP   = num(v(row,"market_prob","market_prob_home",0));
+  const trueOdds = num(v(row,"true_odds","true_odds_home",0));
+  const mktOdds  = num(v(row,"market_odds","market_home_odds",0));
+  const matchStr = [v(row,"home_team",""), v(row,"away_team","")].filter(Boolean).join(" vs ") || v(row,"match_id","");
+  const rationale = v(row,"rationale","reason","") || "Brak opisu";
+  const missing = v(row,"missing_players","") || "";
+  const shock = v(row,"lineup_shock","delta_tis","") || "";
+  const conf = v(row,"confidence","") || "—";
+
+  document.getElementById("drawer-content").innerHTML = `
+    <div class="drawer-head">
+      <div>
+        <div style="font-size:15px;font-weight:500;margin-bottom:6px">${matchStr || "Alert detail"}</div>
+        <div style="display:flex;gap:8px;align-items:center">${decisionBadge(dec)}<span class="muted" style="font-size:11px">Confidence: ${conf}</span></div>
+      </div>
+      <span class="drawer-close" onclick="closeDrawer()">✕</span>
+    </div>
+    <div class="drawer-grid">
+      <div class="d-metric"><label>Model WP</label><span class="${modelWP>mktWP?'grn':'muted'}">${modelWP>0?pct(modelWP):"—"}</span></div>
+      <div class="d-metric"><label>Market WP</label><span class="muted">${mktWP>0?pct(mktWP):"—"}</span></div>
+      <div class="d-metric"><label>Edge</label><span class="${edgeColor(edge)}">${edge!==0?pp(edge):"—"}</span></div>
+      <div class="d-metric"><label>True odds</label><span>${trueOdds>0?odds(trueOdds):"—"}</span></div>
+      <div class="d-metric"><label>Market odds</label><span class="muted">${mktOdds>0?odds(mktOdds):"—"}</span></div>
+      <div class="d-metric"><label>Lineup shock</label><span class="red">${shock||"—"}</span></div>
+    </div>
+    ${missing?`<div style="margin-bottom:12px;font-size:12px;color:var(--t2)"><span style="color:var(--red)">Nieobecne:</span> ${missing}</div>`:""}
+    <div class="panel-title" style="margin-bottom:8px">Rationale</div>
+    <div class="rationale-box">${rationale}</div>
+  `;
+  document.getElementById("drawer-overlay").classList.add("open");
+}
+
+function closeDrawer(e) {
+  if (!e || e.target.id === "drawer-overlay") {
+    document.getElementById("drawer-overlay").classList.remove("open");
+  }
+}
+
+// ─── TEAM PRICING ────────────────────────────────────────────
+function renderPricing(rows) {
+  showLoading("pricing", false);
+  if (!rows || rows.length === 0) {
+    setHtml("pricing-grid", `<div class="empty">Brak danych wycen</div>`);
+    return;
+  }
+
+  const bets = rows.filter(r => {
+    const e = num(v(r,"edge_home_pp","edge",0));
+    return e >= 0.02;
+  });
+  const edges = rows.map(r => num(v(r,"edge_home_pp","edge",0))).filter(n=>n>0);
+  const avgE = edges.length ? (edges.reduce((a,b)=>a+b,0)/edges.length*100).toFixed(1) : "—";
+  const shocks = rows.filter(r => {
+    const s = num(v(r,"lineup_shock_home","lineup_shock",0));
+    return Math.abs(s) >= 0.05;
+  });
+
+  setHtml("pricing-kpi",
+    kpiCard("Meczów", rows.length, "W bazie", "") +
+    kpiCard("Sygnały", bets.length, "Edge ≥ 2pp", bets.length>0?"kpi-grn":"") +
+    kpiCard("Avg edge", avgE+"pp", "Pozytywne sygnały", "kpi-acc") +
+    kpiCard("Lineup shocki", shocks.length, "Delta TIS ≥ 5%", shocks.length>0?"kpi-amb":"")
+  );
+  setHtml("pricing-count", rows.length + " meczów");
+
+  const html = rows.map(row => {
+    const dec = String(v(row,"decision_home","decision","")).toUpperCase();
+    const shock = num(v(row,"lineup_shock_home","lineup_shock",0));
+    const edge  = num(v(row,"edge_home_pp","edge",0));
+    const matchStr = [v(row,"home_team_id",""), v(row,"away_team_id","")].filter(Boolean).join(" vs ") || v(row,"match_id","—");
+    const wpLive = num(v(row,"wp_home_live","model_prob",0));
+    const trueOdds = num(v(row,"true_odds_home","true_odds",0));
+    const mktOdds  = num(v(row,"market_home_odds","market_odds",0));
+    const shockCls = Math.abs(shock)>=0.15?"red":Math.abs(shock)>=0.08?"amb":"muted";
+    let alertCls = "";
+    if (dec.includes("STRONG")) alertCls = "alert-strong";
+    else if (dec.includes("VALUE")||dec.includes("BET")) alertCls = "alert-value";
+    else if (dec==="WATCH") alertCls = "alert-watch";
+
+    return `<div class="pricing-row ${alertCls}">
+      <div>
+        <div class="pr-teams">${matchStr}</div>
+        <div class="pr-sub">${v(row,"match_id","") || ""}</div>
+      </div>
+      <div class="pr-metric"><label>Model WP</label><span class="${wpLive>0.5?'grn':'muted'}">${wpLive>0?pct(wpLive):"—"}</span></div>
+      <div class="pr-metric"><label>True odds</label><span>${trueOdds>0?odds(trueOdds):"—"}</span></div>
+      <div class="pr-metric"><label>Mkt odds</label><span class="muted">${mktOdds>0?odds(mktOdds):"—"}</span></div>
+      <div class="pr-metric"><label>Edge</label><span class="${edgeColor(edge)}">${edge!==0?pp(edge):"—"}</span></div>
+      <div class="pr-metric"><label>Shock</label><span class="${shockCls}">${shock!==0?(shock*100).toFixed(1)+"%":"—"}</span></div>
+      <div>${decisionBadge(dec)}</div>
+    </div>`;
+  }).join("");
+
+  setHtml("pricing-grid", html);
+}
+
+// ─── MATCHES ─────────────────────────────────────────────────
+let matchFilter = "all";
+
+function renderMatches(rows) {
+  showLoading("matches", false);
+  if (!rows || rows.length === 0) {
+    setHtml("matches-list", `<div class="empty">Brak meczów</div>`);
+    return;
+  }
+
+  const fBar = document.getElementById("matches-filters");
+  if (fBar && !fBar.hasChildNodes()) {
+    fBar.innerHTML = ["Wszystkie","YES","NO_DATA"].map(f =>
+      `<button class="f-btn${f==="Wszystkie"?' act':''}" onclick="setMatchFilter('${f}',this)">${f==="YES"?"Zaimportowane":f==="NO_DATA"?"Brak danych":f}</button>`
+    ).join("");
+  }
+
+  const filtered = matchFilter==="all" ? rows : rows.filter(r => String(v(r,"players_imported","")).toUpperCase() === matchFilter);
+  setHtml("matches-count", filtered.length + " / " + rows.length + " meczów");
+
+  const html = filtered.map(row => {
+    const home = v(row,"home_team","") || "?";
+    const away = v(row,"away_team","") || "?";
+    const dt   = String(v(row,"match_datetime","") || "").substring(0,16);
+    const hS   = v(row,"home_sets","") || "";
+    const aS   = v(row,"away_sets","") || "";
+    const venue= v(row,"venue","") || "";
+    const imp  = String(v(row,"players_imported","")).toUpperCase();
+    const impBadge = imp==="YES"?`<span class="badge b-live">Imported</span>`:imp==="NO_DATA"?`<span class="badge b-nobet">No data</span>`:`<span class="badge b-pre">Pending</span>`;
+
+    return `<div class="match-item">
+      <div class="mi-time">${dt||"—"}</div>
+      <div>
+        <div class="mi-teams">${home} <span class="muted">vs</span> ${away}</div>
+        ${venue?`<div class="mi-venue">${venue}</div>`:""}
+      </div>
+      <div class="mi-score">${hS&&aS?`${hS}–${aS}`:"—"}</div>
+      <div>${impBadge}</div>
+    </div>`;
+  }).join("");
+
+  setHtml("matches-list", html);
+}
+
+function setMatchFilter(val, btn) {
+  matchFilter = val==="Wszystkie" ? "all" : val;
+  document.querySelectorAll("#matches-filters .f-btn").forEach(b => b.classList.remove("act"));
+  btn.classList.add("act");
+  renderMatches(DATA.matches);
+}
+
+// ─── PLAYER ROLLING ──────────────────────────────────────────
+let playerTeamFilter = "all";
+
+function renderPlayers(rows) {
+  showLoading("players", false);
+  if (!rows || rows.length === 0) {
+    setHtml("players-grid", `<div class="empty">Brak danych zawodniczek</div>`);
+    return;
+  }
+
+  const maxPis = Math.max(...rows.map(r => num(v(r,"pis_rolling",0))));
+  const teams = [...new Set(rows.map(r => v(r,"team_name","team_id","") || ""))].filter(Boolean).sort();
+
+  const fBar = document.getElementById("players-filters");
+  if (fBar) {
+    fBar.innerHTML = [{val:"all",label:"Wszystkie"},...teams.map(t=>({val:t,label:t}))].map(o =>
+      `<button class="f-btn${o.val===playerTeamFilter?' act':''}" onclick="setPlayerFilter('${o.val}',this)">${o.label}</button>`
+    ).join("");
+  }
+
+  const filtered = playerTeamFilter==="all" ? rows : rows.filter(r => (v(r,"team_name","team_id","")) === playerTeamFilter);
+  setHtml("players-count", filtered.length + " zawodniczek");
+
+  const html = filtered.sort((a,b) => num(v(b,"pis_rolling",0)) - num(v(a,"pis_rolling",0))).map(row => {
+    const name = v(row,"player_name","normalized_player_name","") || "—";
+    const team = v(row,"team_name","team_id","") || "—";
+    const pos  = v(row,"position","") || "?";
+    const pis  = num(v(row,"pis_rolling",0));
+    const pisL3= num(v(row,"pis_last_3",0));
+    const pisL5= num(v(row,"pis_last_5",0));
+    const pisS = num(v(row,"pis_season",0));
+    const pct  = maxPis > 0 ? Math.round(pis/maxPis*100) : 0;
+    const trend = pisL3 > pisS ? "grn" : pisL3 < pisS*0.9 ? "red" : "muted";
+
+    return `<div class="player-card">
+      <div class="pc-meta">
+        <span class="pc-pos">${pos}</span>
+        <span>${team.length>20?team.substring(0,20)+"…":team}</span>
+      </div>
+      <div class="pc-name">${name}</div>
+      <div class="pc-stats">
+        <div class="pc-stat"><label>PIS Rolling</label><span class="acc">${pis.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Last 3</label><span class="${trend}">${pisL3.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Last 5</label><span>${pisL5.toFixed(2)}</span></div>
+        <div class="pc-stat"><label>Season avg</label><span class="muted">${pisS.toFixed(2)}</span></div>
+      </div>
+      <div class="pis-bar-wrap">
+        <div class="pis-bar-track"><div class="pis-bar-fill" style="width:${pct}%"></div></div>
+      </div>
+    </div>`;
+  }).join("");
+
+  setHtml("players-grid", html);
+}
+
+function setPlayerFilter(val, btn) {
+  playerTeamFilter = val;
+  document.querySelectorAll("#players-filters .f-btn").forEach(b => b.classList.remove("act"));
+  btn.classList.add("act");
+  renderPlayers(DATA.players);
+}
+
+// ─── LIVE LINEUP ─────────────────────────────────────────────
+function renderLineup(rows) {
+  showLoading("lineup", false);
+  if (!rows || rows.length === 0) {
+    setHtml("lineup-content", `<div class="empty">Brak danych live lineup</div>`);
+    return;
+  }
+
+  // Group by match_id + team_id
+  const groups = {};
+  rows.forEach(row => {
+    const mid = v(row,"match_id","") || "?";
+    const tid = v(row,"team_id","team_name","") || "?";
+    const key = `${mid}__${tid}`;
+    if (!groups[key]) groups[key] = { match_id:mid, team:tid, rows:[] };
+    groups[key].rows.push(row);
+  });
+
+  const matches = [...new Set(rows.map(r => v(r,"match_id","")))].filter(Boolean);
+  const fBar = document.getElementById("lineup-filters");
+  if (fBar) {
+    fBar.innerHTML = [{val:"all",label:"Wszystkie meczów"},...matches.map(m=>({val:m,label:"Mecz "+m}))].map(o =>
+      `<button class="f-btn act" onclick="">${o.label}</button>`
+    ).slice(0,6).join("");
+  }
+
+  const html = Object.values(groups).map(grp => {
+    const teamLabel = grp.team.length > 30 ? grp.team.substring(0,30)+"…" : grp.team;
+    const slotRows = grp.rows.map(row => {
+      const slot = v(row,"slot_name","") || "—";
+      const name = v(row,"live_player_name_normalized","live_player_name_raw","") || "—";
+      const pos  = v(row,"resolved_position","") || "?";
+      const missing = String(v(row,"is_missing_from_typical","")).toLowerCase() === "true";
+      return `<div class="lu-row ${missing?'changed':'ok'}" style="display:flex;align-items:center;padding:7px 10px;border-radius:6px;margin-bottom:3px;background:var(--s3);${missing?'border:1px solid rgba(240,96,96,.2);background:rgba(240,96,96,.05)':'border:1px solid transparent'}">
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);width:36px">${slot}</span>
+        <span style="flex:1;font-size:12px;color:${missing?'var(--red)':'var(--t1)'}">${name}</span>
+        <span style="font-family:var(--mono);font-size:10px;color:var(--t3);margin-right:6px">${pos}</span>
+        ${missing?'<span style="font-size:10px;color:var(--red)">▼</span>':''}
+      </div>`;
+    }).join("");
+
+    return `<div class="panel" style="margin-bottom:12px">
+      <div class="panel-title">${teamLabel} · Mecz ${grp.match_id}</div>
+      ${slotRows}
+    </div>`;
+  }).join("");
+
+  setHtml("lineup-content", `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px">${html}</div>`);
+}
+</script>
+</body>
+</html>
