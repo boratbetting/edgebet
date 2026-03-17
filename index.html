@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EdgeBet · FR_LAF_W · b1200</title>
+<title>EdgeBet · FR_LAF_W · b1205</title>
 <!-- build:20260315_1340 -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
@@ -1707,6 +1707,30 @@ function setPlayerSortDir(dir, btn) {
   playerSortDir = dir;
   renderPlayers(DATA.players);
 }
+
+// ── Match helpers ─────────────────────────────────────────────
+function getMatchKO(mid) {
+  var row = (DATA.matches||[]).find(function(r){
+    return String(v(r,"match_id","")||"") === String(mid);
+  });
+  if (!row) return null;
+  var raw = String(v(row,"match_datetime","")||"");
+  if (!raw) return null;
+  var m = raw.match(/(\d{1,2}):(\d{2})/);
+  return m ? m[0] : raw.substring(0,16);
+}
+
+function getMatchTeams(mid) {
+  var row = (DATA.matches||[]).find(function(r){
+    return String(v(r,"match_id","")||"") === String(mid);
+  });
+  if (!row) return null;
+  var home = String(v(row,"home_team","")||"");
+  var away = String(v(row,"away_team","")||"");
+  if (!home || !away) return null;
+  return {home: resolveMatchTeamName(home), away: resolveMatchTeamName(away)};
+}
+
 
 // ─── LIVE LINEUP ─────────────────────────────────────────────
 function renderLineup(rows) {
